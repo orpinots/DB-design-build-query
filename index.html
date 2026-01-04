@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ERD Builder</title>
+  <link rel="stylesheet" href="shared.css">
+  <script src="shared.js"></script>
+
+  <!-- External default schemas for sandbox (unchanged) -->
+  <script src="sampleSchemas.js"></script>
+</head>
+<body>
+
+<div class="nav">
+  <a class="active" href="erd.html">ERD Builder</a>
+  <a href="schema.html">Schema / Mermaid</a>
+  <a href="sandbox.html">SQL Sandbox</a>
+</div>
+
+<h1>ERD Builder</h1>
+
+<div id="toolbar">
+  <button onclick="addEntity()">+ Add Entity</button>
+
+  <label style="margin-left: 1rem;">
+    <input type="checkbox" id="toggleAssocAsMM" />
+    Show assoc. entities as rel.'s.
+  </label>
+
+  <label style="margin-left: 1rem;">
+    <input type="checkbox" id="toggleAttributeOvals">
+    Show attributes as ovals
+  </label>
+
+  <label style="margin-left:16px; font-size:14px;">
+    Sample ERD:
+    <select id="erdPresetSelect" onchange="switchErdPreset(this.value)">
+      <option value="fourWay">4-Way Registration (default)</option>
+      <option value="twoBinary">Student–Registration–Course (binary rel.)</option>
+      <option value="equipmentSpec">Specialization hierarchy</option>
+      <option value="blank">Blank ERD</option>
+    </select>
+  </label>
+
+  <button onclick="saveErdLayout()">💾 Save ERD</button>
+  <button onclick="deleteErdLayout()">🗑️ Delete ERD</button>
+  <label style="font-size:14px;">
+    Load ERD:
+    <select id="savedErdSelect" onchange="loadErdLayout(this.value)">
+      <option value="">-- Select Saved ERD --</option>
+    </select>
+  </label>
+</div>
+
+<div id="layout" style="display:block;">
+  <div id="canvasWrap">
+    <svg id="svgLayer" width="100%" height="100%"></svg>
+  </div>
+</div>
+
+<!-- Entity context menu -->
+<div id="ctxMenu">
+  <button data-act="edit">Edit Entity</button>
+  <button data-act="attr">Add Attribute</button>
+  <button data-act="rel">Add Relationship</button>
+  <button data-act="weak">Add Weak Entity</button>
+  <button data-act="dup">Duplicate Entity</button>
+  <button data-act="del">Delete Entity</button>
+</div>
+
+<!-- Relationship context menu -->
+<div id="relCtxMenu">
+  <button data-act="editRel">Edit Relationship</button>
+  <button data-act="convertAssoc">Convert to Associative Entity</button>
+  <button data-act="delRel">Delete Relationship</button>
+</div>
+
+<!-- Entity edit modal -->
+<div id="entityModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Entity</h3>
+      <button class="modal-close" onclick="closeEntityModal()">✕</button>
+    </div>
+    <div>
+      <label>
+        Entity name:
+        <input type="text" id="entityNameInput" style="width:100%; box-sizing:border-box; margin-top:4px;">
+      </label>
+    </div>
+    <div style="margin-top:10px;">
+      <strong>Attributes</strong>
+      <table id="entityAttrTable">
+        <thead>
+          <tr>
+            <th style="width:32%;">Name</th>
+            <th style="width:22%;">Type</th>
+            <th>NOT NULL</th>
+            <th>UNIQUE</th>
+            <th>PK</th>
+            <th>Delete</th>
+          </tr>
+        </thead>
+        <tbody id="entityAttrBody"></tbody>
+      </table>
+      <button style="margin-top:6px;" onclick="addAttrRow()">+ Add Attribute</button>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeEntityModal()">Cancel</button>
+      <button class="primary" onclick="saveEntityModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Relationship edit modal -->
+<div id="relModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Relationship</h3>
+      <button class="modal-close" onclick="closeRelModal()">✕</button>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <label>
+        Relationship name:
+        <input type="text" id="relNameInput"
+               style="width:100%; box-sizing:border-box; margin-top:4px;">
+      </label>
+    </div>
+
+    <div id="relSidesPanel"></div>
+
+    <div class="modal-footer">
+      <button onclick="closeRelModal()">Cancel</button>
+      <button class="primary" onclick="saveRelModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ERD logic -->
+<script src="erd.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Schema / Mermaid</title>
+  <link rel="stylesheet" href="shared.css">
+  <script src="shared.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+
+<div class="nav">
+  <a href="erd.html">ERD Builder</a>
+  <a class="active" href="schema.html">Schema / Mermaid</a>
+  <a href="sandbox.html">SQL Sandbox</a>
+</div>
+
+<h1>Schema + Mermaid</h1>
+
+<div id="toolbar">
+  <button class="primary" onclick="buildSchema()">Build Schema from ERD</button>
+  <button onclick="loadMermaidToErd()">Load Mermaid→ERD</button>
+  <button onclick="openMermaidPreview()">Open Mermaid Preview</button>
+  <button onclick="pushSqlToSandbox()">Send SQL to Sandbox</button>
+</div>
+
+<div id="outputBelow" style="margin-top:14px;">
+  <h3>Generated SQL Schema</h3>
+  <textarea id="sqlOut"></textarea>
+
+  <h3 style="margin-top:14px;">Generated Mermaid ERD Text</h3>
+  <textarea id="mermaidOut"></textarea>
+</div>
+
+<script src="schema.js"></script>
+</body>
+</html>

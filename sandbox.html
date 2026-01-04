@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SQL Sandbox</title>
+  <link rel="stylesheet" href="shared.css">
+
+  <script src="shared.js"></script>
+
+  <!-- SQL.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+  <!-- Mermaid is only needed here if you keep the “generateERD from DB” view -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+  <script src="sampleSchemas.js"></script>
+</head>
+<body>
+
+<div class="nav">
+  <a href="erd.html">ERD Builder</a>
+  <a href="schema.html">Schema / Mermaid</a>
+  <a class="active" href="sandbox.html">SQL Sandbox</a>
+</div>
+
+<div class="sandbox-container">
+  <h1>SQL Sandbox</h1>
+
+  <div id="global-controls">
+    <button onclick="useErdSql()">⬇️ Use ERD SQL</button>
+    <button id="save-schema-button" onclick="saveSchema()">💾 Save Custom Setup</button>
+    <button onclick="deleteSchema()">🗑️ Delete Setup</button>
+    <label for="saved-schemas">Load Setup:</label>
+    <select id="saved-schemas" onchange="loadSchema(this.value)">
+      <option value="">-- Select a Schema --</option>
+    </select>
+  </div>
+
+  <div class="input-area">
+    <div class="pane">
+      <div class="section-header">1. Database Schema & Data (CREATE/INSERT)</div>
+      <textarea id="db-script" placeholder="Enter your CREATE TABLE and INSERT statements here."></textarea>
+      <div class="control-group">
+        <button id="run-schema-button" onclick="initDb()">🔄 Run Schema</button>
+      </div>
+    </div>
+
+    <div class="pane">
+      <div class="section-header">2. SQL Query Tests (SELECT)</div>
+      <textarea id="query-input" placeholder="Enter your SELECT query here."></textarea>
+      <div class="control-group">
+        <button id="run-button" onclick="executeQuery()">▶️ Run Query</button>
+
+        <label for="table-list">Show Data:</label>
+        <select id="table-list">
+          <option value="">-- Select Table --</option>
+        </select>
+        <button id="show-table-data-button" onclick="showTableData()">📋 View</button>
+
+        <button id="save-query-button" onclick="saveQuery()">💾 Save Query</button>
+        <button onclick="deleteQuery()">🗑️ Delete Query</button>
+        <label for="saved-queries">Load Query:</label>
+        <select id="saved-queries" onchange="loadQuery(this.value)">
+          <option value="">-- Select a Query --</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="output-switch-group">
+    <button id="show-erd-button" class="active" onclick="switchOutputView('erd')">🖼️ Database Diagram (ERD)</button>
+    <button id="show-results-button" onclick="switchOutputView('results')">📋 Query Results</button>
+  </div>
+
+  <div id="output-area">
+    <div id="erd-container" style="display:block;">
+      <p id="erd-message">Click “Run Schema” to view the diagram.</p>
+      <div id="mermaid-diagram"></div>
+    </div>
+
+    <div id="query-output-content">
+      <div id="status-message" class="message-box success">Run a query to see the output here.</div>
+      <div id="results-table"></div>
+    </div>
+  </div>
+</div>
+
+<script src="sandbox.js"></script>
+</body>
+</html>
