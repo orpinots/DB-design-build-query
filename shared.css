@@ -186,6 +186,42 @@ th, td {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+
+/* ===== SQL results table styling (scoped) ===== */
+#results-table table {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;           /* rounds corners for header/rows */
+}
+
+#results-table thead th {
+  background: #eef4ff;
+  color: #0f172a;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+
+#results-table tbody tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+#results-table tbody tr:hover td {
+  background: #f1f7ff;
+}
+
+/* Vertical column separators for SQL results */
+#results-table th,
+#results-table td {
+  border-right: 1px solid var(--border);
+}
+
+#results-table th:last-child,
+#results-table td:last-child {
+  border-right: none;
+}
+
+
+
 @media (max-width: 900px) {
   .input-area { grid-template-columns: 1fr; }
 }
