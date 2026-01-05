@@ -109,22 +109,59 @@ textarea {
   background: transparent;
 }
 
-/* Context menus */
-#ctxMenu, #relCtxMenu {
+
+/* ---------- Context menus (refined) ---------- */
+#ctxMenu,
+#relCtxMenu {
   position: absolute;
   display: none;
-  background: #fff;
+  min-width: 150px;          /* ⬅️ narrower */
+  max-width: 180px;
+  background: #f9fbff;       /* ⬅️ very light blue tint */
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
   z-index: 9999;
 }
-#ctxMenu button, #relCtxMenu button {
+
+/* Menu buttons */
+#ctxMenu button,
+#relCtxMenu button {
   width: 100%;
-  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;         /* ⬅️ tighter vertical spacing */
   margin: 2px 0;
+  text-align: left;
+  font-size: 13px;
+  color: #222;
+  cursor: pointer;
 }
+
+/* Hover state */
+#ctxMenu button:hover,
+#relCtxMenu button:hover {
+  background: #e9f1ff;       /* subtle hover highlight */
+  color: #0b3fdc;
+}
+
+/* Destructive action (Delete) */
+#ctxMenu button[data-act="del"],
+#relCtxMenu button[data-act="delRel"] {
+  color: #b00020;
+}
+
+#ctxMenu button[data-act="del"]:hover,
+#relCtxMenu button[data-act="delRel"]:hover {
+  background: #fdecee;
+}
+
+
+
+
+
 
 /* Modals */
 .modal {
