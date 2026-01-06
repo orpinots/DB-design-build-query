@@ -1,40 +1,5 @@
 
 // * ---------- ERD state ---------- */
-	
-	
-const INITIAL_ERD = {
-  entities: [
-    { id:"student", name:"Student", x:60,  y:180, attributes:[
-      { name:"SSN", pk:true }, { name:"Name", pk:false }
-    ]},
-    { id:"registration", name:"Registration", x:360,y:180, attributes:[
-      { name:"SSN", pk:true }, { name:"CRN", pk:true }
-    ]},
-    { id:"course", name:"Course", x:660,y:180, attributes:[
-      { name:"CRN", pk:true }, { name:"CourseName", pk:false }
-    ]}
-  ],
-  relationships: [
-    {
-      id: "r1",
-      name: "signsup",
-      type: "1:N",
-      a: "student",
-      b: "registration",
-      optA: false,  // student side not optional
-      optB: true    // registration side optional (0..*)
-    },
-    {
-      id: "r2",
-      name: "has",
-      type: "1:N",
-      a: "course",
-      b: "registration",
-      optA: false,  // course side not optional
-      optB: true    // registration side optional (0..*)
-    }
-  ]
-};
 
 // Small helper to deep-clone our ERD objects
 function cloneErd(obj) {
