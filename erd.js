@@ -1427,6 +1427,7 @@ function enableRelAttrDrag(hitEl) {
 function enableContext(el){
   el.oncontextmenu = e => {
     e.preventDefault();
+    e.stopPropagation();
     ctxEntityId = el.dataset.id;
     showCtxMenu(e.pageX, e.pageY);
   };
@@ -1436,6 +1437,7 @@ function enableContext(el){
     if (ent) openEntityModal(ent);
   };
 }
+
 function showCtxMenu(x,y){
   ctxMenu.style.left  = x + "px";
   ctxMenu.style.top   = y + "px";
@@ -1445,6 +1447,7 @@ function showCtxMenu(x,y){
 function enableRelContext(el){
   el.oncontextmenu = e => {
     e.preventDefault();
+    e.stopPropagation();
     ctxRelId = el.dataset.rid;
     showRelCtxMenu(e.pageX, e.pageY);
   };
@@ -1454,16 +1457,32 @@ function enableRelContext(el){
     if (rel) openRelModal(rel);
   };
 }
+
 function showRelCtxMenu(x,y){
   relCtxMenu.style.left  = x + "px";
   relCtxMenu.style.top   = y + "px";
   relCtxMenu.style.display = "block";
 }
 
-document.addEventListener("click", e => {
-  if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
-  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
-});
+// --- Close context menus (Safari-safe) ---
+// Safari can fire a synthetic "click" after right-click release,
+// so we close on pointerdown and ignore right button.
+document.addEventListener("pointerdown", (e) => {
+  // Ignore right-click button (2)
+  if (e.button === 2) return;
+
+  if (ctxMenu && ctxMenu.style.display === "block" && !ctxMenu.contains(e.target)) {
+    ctxMenu.style.display = "none";
+  }
+  if (relCtxMenu && relCtxMenu.style.display === "block" && !relCtxMenu.contains(e.target)) {
+    relCtxMenu.style.display = "none";
+  }
+}, true);
+
+// Prevent clicks inside menu from bubbling into document handlers
+ctxMenu?.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
+relCtxMenu?.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
+
 
 //  Entity menu actions */
 ctxMenu.addEventListener("click", e => {
