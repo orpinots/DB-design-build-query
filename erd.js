@@ -1850,7 +1850,7 @@ function openRelModal(rel) {
                  value="${e.id}" ${checked} ${disabled}>
           ${e.name}
         </label>`;
-    }).join("") || '<em>No other entities defined yet.</em>';
+    }).join("") || '<em>At least 2 potential subtype entities must pre-exist.</em>';
 
   const attrRowsHtml = relAttrs.map((a, i) => `
     <tr>
