@@ -1,5 +1,40 @@
 
 // * ---------- ERD state ---------- */
+	
+	
+const INITIAL_ERD = {
+  entities: [
+    { id:"student", name:"Student", x:60,  y:180, attributes:[
+      { name:"SSN", pk:true }, { name:"Name", pk:false }
+    ]},
+    { id:"registration", name:"Registration", x:360,y:180, attributes:[
+      { name:"SSN", pk:true }, { name:"CRN", pk:true }
+    ]},
+    { id:"course", name:"Course", x:660,y:180, attributes:[
+      { name:"CRN", pk:true }, { name:"CourseName", pk:false }
+    ]}
+  ],
+  relationships: [
+    {
+      id: "r1",
+      name: "signsup",
+      type: "1:N",
+      a: "student",
+      b: "registration",
+      optA: false,  // student side not optional
+      optB: true    // registration side optional (0..*)
+    },
+    {
+      id: "r2",
+      name: "has",
+      type: "1:N",
+      a: "course",
+      b: "registration",
+      optA: false,  // course side not optional
+      optB: true    // registration side optional (0..*)
+    }
+  ]
+};
 
 // Small helper to deep-clone our ERD objects
 function cloneErd(obj) {
@@ -85,7 +120,6 @@ const ERD_PRESETS = {
           y: 220,
           attributes: [
             { name: "BuildingID", pk: true }
-            { name: "BuildingName", pk: false }
           ]
         },
         {
@@ -1393,7 +1427,6 @@ function enableRelAttrDrag(hitEl) {
 function enableContext(el){
   el.oncontextmenu = e => {
     e.preventDefault();
-    e.stopPropagation();
     ctxEntityId = el.dataset.id;
     showCtxMenu(e.pageX, e.pageY);
   };
@@ -1403,7 +1436,6 @@ function enableContext(el){
     if (ent) openEntityModal(ent);
   };
 }
-
 function showCtxMenu(x,y){
   ctxMenu.style.left  = x + "px";
   ctxMenu.style.top   = y + "px";
@@ -1413,7 +1445,6 @@ function showCtxMenu(x,y){
 function enableRelContext(el){
   el.oncontextmenu = e => {
     e.preventDefault();
-    e.stopPropagation();
     ctxRelId = el.dataset.rid;
     showRelCtxMenu(e.pageX, e.pageY);
   };
@@ -1423,32 +1454,16 @@ function enableRelContext(el){
     if (rel) openRelModal(rel);
   };
 }
-
 function showRelCtxMenu(x,y){
   relCtxMenu.style.left  = x + "px";
   relCtxMenu.style.top   = y + "px";
   relCtxMenu.style.display = "block";
 }
 
-// --- Close context menus (Safari-safe) ---
-// Safari can fire a synthetic "click" after right-click release,
-// so we close on pointerdown and ignore right button.
-document.addEventListener("pointerdown", (e) => {
-  // Ignore right-click button (2)
-  if (e.button === 2) return;
-
-  if (ctxMenu && ctxMenu.style.display === "block" && !ctxMenu.contains(e.target)) {
-    ctxMenu.style.display = "none";
-  }
-  if (relCtxMenu && relCtxMenu.style.display === "block" && !relCtxMenu.contains(e.target)) {
-    relCtxMenu.style.display = "none";
-  }
-}, true);
-
-// Prevent clicks inside menu from bubbling into document handlers
-ctxMenu?.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
-relCtxMenu?.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
-
+document.addEventListener("click", e => {
+  if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
+  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
+});
 
 //  Entity menu actions */
 ctxMenu.addEventListener("click", e => {
