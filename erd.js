@@ -84,7 +84,8 @@ const ERD_PRESETS = {
           x: 860,
           y: 220,
           attributes: [
-            { name: "BuildingID", pk: true }
+              { name: "BuildingID", pk: true }
+              { name: "BuildingName", pk: false }
           ]
         },
         {
