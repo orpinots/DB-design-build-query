@@ -516,6 +516,19 @@ function getTableColumns(tableName) {
   return info[0].values.map(row => row[1]);
 }
 
+
+function getTableColumnsWithTypes(tableName) {
+  const info = db.exec(`PRAGMA table_info(${tableName});`);
+  if (!info.length) return [];
+  // row: cid, name, type, notnull, dflt_value, pk
+  return info[0].values.map(row => ({
+    name: row[1],
+    type: (row[2] || '').toUpperCase(),
+    pk: Number(row[5] || 0) // 0 = not PK, >0 = PK (order within composite PK)
+  }));
+}
+
+
 function exportTableInserts(tableName) {
   const cols = getTableColumns(tableName);
   if (!cols.length) return '';
@@ -705,13 +718,66 @@ function renderEditGrid() {
   });
 }
 
+
 function addEditRow() {
-  if (!editState.columns.length) return;
-  const empty = editState.columns.map(() => '');
-  editState.rows.push(empty);
+  const { tableName } = editState;
+  if (!tableName || !editState.columns.length) return;
+
+  // Row number (1-based) for the new row
+  const rowNum = editState.rows.length + 1;
+
+  // Pull types + PK info from SQLite (best available signal)
+  const colsWithTypes = getTableColumnsWithTypes(tableName);
+  const typeByCol = new Map(colsWithTypes.map(x => [x.name, x.type]));
+  const pkByCol   = new Map(colsWithTypes.map(x => [x.name, x.pk])); // ✅ add this line
+
+  const newRow = editState.columns.map(colName => {
+    const colType = typeByCol.get(colName) || '';
+    const isPk = (pkByCol.get(colName) || 0) > 0;                    // ✅ add this line
+
+    // ✅ 3-line exception: if column is PK integer, default to ''
+    if (isPk && isType(colType, ['INT'])) {                          // ✅ add this line
+      return '';
+    }
+
+    // Boolean-ish (SQLite has no real boolean, but schemas often say BOOL/BOOLEAN)
+    if (isType(colType, ['BOOL', 'BOOLEAN'])) {
+      return String(randInt(0, 1)); // keep as string for the inputs; coerces later
+    }
+
+    // Integer-ish
+    if (isType(colType, ['INT'])) {
+      return String(randInt(1, 100));
+    }
+
+    // Real/float/decimal/numeric-ish
+    if (isType(colType, ['REAL', 'FLOA', 'DOUB', 'DEC', 'NUM'])) {
+      // small decimal feels nicer than huge integers
+      return String(randInt(1, 100));
+    }
+
+    // Date/Time-ish (very heuristic, but works well in practice)
+    if (isType(colType, ['DATETIME', 'TIMESTAMP'])) {
+      return randomDateTimeLast24Hours();
+    }
+    if (isType(colType, ['DATE'])) {
+      return randomDateLastYear();
+    }
+    if (isType(colType, ['TIME'])) {
+      // simple HH:MM:SS
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(randInt(0, 23))}:${pad(randInt(0, 59))}:${pad(randInt(0, 59))}`;
+    }
+
+    // Default: text-like placeholder = columnName + row#
+    return `${colName}${rowNum}`;
+  });
+
+  editState.rows.push(newRow);
   renderEditGrid();
 }
 window.addEditRow = addEditRow;
+
 
 function deleteEditRow(rIdx) {
   if (rIdx < 0 || rIdx >= editState.rows.length) return;
@@ -817,6 +883,31 @@ function setEditMode(isOn) {
   document.body.classList.toggle('edit-mode', !!isOn);
 }
 
+function randInt(min, max) {
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function randomDateTimeLast24Hours() {
+  const now = Date.now();
+  const past = now - randInt(0, 24 * 60 * 60) * 1000; // seconds ago
+  const d = new Date(past);
+  // SQLite-friendly ISO-ish (no timezone Z; keep it simple)
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function randomDateLastYear() {
+  const now = Date.now();
+  const past = now - randInt(0, 365 * 24 * 60 * 60) * 1000;
+  const d = new Date(past);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function isType(typeStr, needles) {
+  const t = (typeStr || '').toUpperCase();
+  return needles.some(n => t.includes(n));
+}
 
 
 function coerceCellValue(v) {
