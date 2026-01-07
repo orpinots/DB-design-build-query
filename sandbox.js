@@ -1,6 +1,9 @@
 
 
 let db = null;
+// --- Keep track of CREATE-table order (from the user's script) ---
+let lastCreateOrder = [];
+
 const MAX_SCHEMAS = 5;
 const MAX_QUERIES = 10;
 const SCHEMA_STORAGE_KEY = 'sql_sandbox_schemas';
@@ -21,6 +24,12 @@ const statusMessage = document.getElementById('status-message');
 const resultsTableDiv = document.getElementById('results-table');
 const showErdButton = document.getElementById('show-erd-button');
 const showResultsButton = document.getElementById('show-results-button');
+
+// --- Edit panel DOM ---
+const editPanel = document.getElementById('edit-panel');
+const editGridWrap = document.getElementById('edit-grid-wrap');
+const editTableNameSpan = document.getElementById('edit-table-name');
+
 
 const firstDefaultSchema = (DEFAULT_SCHEMAS && DEFAULT_SCHEMAS.length > 0)
   ? DEFAULT_SCHEMAS[0]
@@ -83,11 +92,14 @@ async function initDb() {
     const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
     db = new SQL.Database();
 
-    const schemaScript = dbScriptInput.value.trim();
-    if (!schemaScript) throw new Error("Schema script cannot be empty.");
+	const schemaScript = dbScriptInput.value.trim();
+	if (!schemaScript) throw new Error("Schema script cannot be empty.");
 
-    db.run(schemaScript);
+	const { ddl } = splitDdlAndData(schemaScript);
+	lastCreateOrder = extractCreateOrder(ddl);
 
+	db.run(schemaScript);
+	
     statusMessage.className = 'message-box success';
     statusMessage.textContent = '✅ Database successfully created and populated. You can now run queries.';
 
@@ -462,3 +474,370 @@ function renderTable(columns, rows) {
   html += '</tbody></table>';
   return html;
 }
+
+function splitDdlAndData(scriptText) {
+  const s = scriptText || '';
+  const insertIdx = s.search(/^\s*INSERT\s+INTO\b/im);
+  if (insertIdx === -1) {
+    return { ddl: s.trim(), data: '' };
+  }
+  return {
+    ddl: s.slice(0, insertIdx).trim(),
+    data: s.slice(insertIdx).trim()
+  };
+}
+
+function extractCreateOrder(ddlText) {
+  // Handles: CREATE TABLE tableName ( ... ) ;
+  // Also handles: CREATE TABLE IF NOT EXISTS tableName ...
+  const order = [];
+  const re = /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(["`]?)([A-Za-z_][\w]*)\1\s*\(/gim;
+  let m;
+  while ((m = re.exec(ddlText)) !== null) {
+    order.push(m[2]);
+  }
+  // Remove duplicates while preserving order
+  return [...new Set(order)];
+}
+
+function sqlLiteral(v) {
+  if (v === null || v === undefined) return 'NULL';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  // Strings: escape single quotes by doubling them
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+function getTableColumns(tableName) {
+  const info = db.exec(`PRAGMA table_info(${tableName});`);
+  if (!info.length) return [];
+  // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+  return info[0].values.map(row => row[1]);
+}
+
+function exportTableInserts(tableName) {
+  const cols = getTableColumns(tableName);
+  if (!cols.length) return '';
+
+  const res = db.exec(`SELECT * FROM ${tableName};`);
+  if (!res.length || !res[0].values.length) {
+    // No rows
+    return `-- INSERTS: ${tableName}\n-- (no rows)\n`;
+  }
+
+  const colList = cols.join(', ');
+  let out = `-- INSERTS: ${tableName}\n`;
+
+  res[0].values.forEach(row => {
+    const values = row.map(sqlLiteral).join(', ');
+    out += `INSERT INTO ${tableName} (${colList}) VALUES (${values});\n`;
+  });
+
+  return out + '\n';
+}
+
+function exportAllInsertsInCreateOrder(createOrder) {
+  // Only include tables that exist (user might have edited CREATEs)
+  const existing = new Set();
+  const t = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+  if (t.length) t[0].values.forEach(r => existing.add(r[0]));
+
+  let out = '';
+  createOrder.forEach(name => {
+    if (existing.has(name)) out += exportTableInserts(name);
+  });
+
+  // Also include any “extra” tables not found in CREATE order (optional)
+  // This is nice when someone creates tables dynamically or via other means.
+  const extras = [...existing].filter(n => !createOrder.includes(n));
+  if (extras.length) {
+    out += `-- Other tables (not found in CREATE order)\n\n`;
+    extras.forEach(name => { out += exportTableInserts(name); });
+  }
+
+  return out.trim();
+}
+
+function refreshDbScriptTextareaFromLiveDb() {
+  if (!db) return;
+
+  const { ddl } = splitDdlAndData(dbScriptInput.value);
+  const inserts = exportAllInsertsInCreateOrder(lastCreateOrder.length ? lastCreateOrder : []);
+  const rebuilt = inserts ? `${ddl}\n\n${inserts}\n` : `${ddl}\n`;
+  dbScriptInput.value = rebuilt;
+}
+
+
+// ===============================
+// Edit Table Data (no-SQL UI)
+// ===============================
+
+let editState = {
+  tableName: null,
+  columns: [],
+  // rows is an array of arrays, aligned to columns
+  rows: []
+};
+
+function openEditPanelForTable(tableName) {
+  if (!db) {
+    alert('Database is not initialized. Click "Run Schema" first.');
+    return;
+  }
+
+  // Load current data
+  const cols = getTableColumns(tableName);
+  if (!cols.length) {
+    alert(`Could not read columns for table "${tableName}".`);
+    return;
+  }
+
+  const res = db.exec(`SELECT * FROM ${tableName};`);
+  const rows = (res.length && res[0].values) ? res[0].values : [];
+
+  editState = {
+    tableName,
+    columns: cols,
+    rows: rows.map(r => [...r]) // clone
+  };
+
+  // Render
+  editTableNameSpan.textContent = tableName;
+  renderEditGrid();
+
+  // Show panel + switch to results view
+  switchOutputView('results');
+  editPanel.style.display = 'block';
+  
+  switchOutputView('results');
+  editPanel.style.display = 'block';
+  setEditMode(true);
+  editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  
+  // Keep Query Results in sync with the edited table (no side effects)
+  showTablePreview(tableName);
+
+}
+
+function closeEditPanel() {
+  setEditMode(false);
+  editPanel.style.display = 'none';
+  editGridWrap.innerHTML = '';
+  editTableNameSpan.textContent = '';
+  editState = { tableName: null, columns: [], rows: [] };
+}
+
+window.closeEditPanel = closeEditPanel; // needed for HTML onclick
+window.applyEditsAndUpdateSchemaSql = applyEditsAndUpdateSchemaSql; // needed for HTML onclick
+
+function renderEditGrid() {
+  const { tableName, columns, rows } = editState;
+
+  // Basic guard
+  if (!tableName || !columns.length) {
+    editGridWrap.innerHTML = '';
+    return;
+  }
+
+  // Build table
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:10px 0;">
+      <div class="muted" style="font-size:12px;">
+        Tip: leave a cell blank to store NULL. Numbers will be stored as numbers when possible.
+      </div>
+      <button type="button" onclick="addEditRow()">+ Add Row</button>
+    </div>
+
+    <div style="overflow:auto; border:1px solid var(--border); border-radius:10px;">
+      <table class="edit-grid" style="margin:0;">
+        <thead>
+          <tr>
+            ${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}
+            <th style="width:1%; white-space:nowrap;">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row, rIdx) => `
+            <tr>
+              ${columns.map((c, cIdx) => {
+                const v = row[cIdx];
+                const display = (v === null || v === undefined) ? '' : String(v);
+                return `
+                  <td>
+                    <input
+                      class="cell-input"
+                      data-r="${rIdx}"
+                      data-c="${cIdx}"
+                      value="${escapeAttr(display)}"
+                      style="width:100%; box-sizing:border-box;"
+                    />
+                  </td>`;
+              }).join('')}
+              <td style="text-align:center;">
+                <button type="button" onclick="deleteEditRow(${rIdx})">🗑️</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  editGridWrap.innerHTML = html;
+
+  // Wire input events (Safari-friendly: use 'input', not change)
+  editGridWrap.querySelectorAll('input.cell-input').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const r = Number(e.target.dataset.r);
+      const c = Number(e.target.dataset.c);
+      editState.rows[r][c] = e.target.value;
+    });
+  });
+}
+
+function addEditRow() {
+  if (!editState.columns.length) return;
+  const empty = editState.columns.map(() => '');
+  editState.rows.push(empty);
+  renderEditGrid();
+}
+window.addEditRow = addEditRow;
+
+function deleteEditRow(rIdx) {
+  if (rIdx < 0 || rIdx >= editState.rows.length) return;
+  editState.rows.splice(rIdx, 1);
+  renderEditGrid();
+}
+window.deleteEditRow = deleteEditRow;
+
+/**
+ * Apply editor state to live DB (simple strategy):
+ * - DELETE all rows from table
+ * - INSERT all editor rows back
+ * Then refresh the CREATE/INSERT textarea by exporting inserts in CREATE order.
+ */
+function applyEditsAndUpdateSchemaSql() {
+  if (!db) return;
+  const { tableName, columns, rows } = editState;
+  if (!tableName) return;
+
+  // Pull latest input values from DOM (in case a browser didn't fire input events)
+  const inputs = editGridWrap.querySelectorAll('input.cell-input');
+  inputs.forEach(inp => {
+    const r = Number(inp.dataset.r);
+    const c = Number(inp.dataset.c);
+    if (!Number.isNaN(r) && !Number.isNaN(c) && editState.rows[r]) {
+      editState.rows[r][c] = inp.value;
+    }
+  });
+
+  // Convert UI cell strings to typed-ish values:
+  // - '' => NULL
+  // - numeric strings => Number
+  // - otherwise => string
+  const typedRows = rows.map(row =>
+    row.map(v => coerceCellValue(v))
+  );
+
+  try {
+    // Use a transaction
+    db.run('BEGIN;');
+    db.run(`DELETE FROM ${tableName};`);
+
+    if (typedRows.length) {
+      const placeholders = columns.map(() => '?').join(', ');
+      const stmt = db.prepare(`INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders});`);
+
+      typedRows.forEach(r => {
+        stmt.run(r);
+      });
+
+      stmt.free();
+    }
+
+    db.run('COMMIT;');
+
+    // Update textarea SQL (CREATE stays same; INSERTs regenerated)
+    refreshDbScriptTextareaFromLiveDb();
+
+    // Refresh ERD + list + show updated table in results
+    populateTableList();
+    generateERD();
+
+    queryInput.value = `SELECT * FROM ${tableName};`;
+    executeQuery();
+
+    statusMessage.className = 'message-box success';
+    statusMessage.textContent = `✅ Updated table "${tableName}" and regenerated INSERT statements.`;
+
+    closeEditPanel();
+  } catch (err) {
+    try { db.run('ROLLBACK;'); } catch (_) {}
+    statusMessage.className = 'message-box error';
+    statusMessage.textContent = `❌ Failed to apply edits: ${err.message}`;
+    console.error(err);
+  }
+}
+
+
+function showEditTableData() {
+  const tableName = tableListSelect.value;
+  if (!tableName) {
+    alert("Please select a table to show/edit.");
+    return;
+  }
+  openEditPanelForTable(tableName);
+  tableListSelect.value = '';
+}
+window.showEditTableData = showEditTableData;
+
+
+// ---------- Helpers for editor ----------
+
+function showTablePreview(tableName) {
+  const res = db.exec(`SELECT * FROM ${tableName};`);
+  const cols = (res.length) ? res[0].columns : [];
+  const rows = (res.length) ? res[0].values : [];
+  resultsTableDiv.innerHTML = renderTable(cols, rows);
+  statusMessage.className = 'message-box success';
+  statusMessage.textContent = `✅ Showing "${tableName}" (${rows.length} row(s))`;
+}
+
+function setEditMode(isOn) {
+  document.body.classList.toggle('edit-mode', !!isOn);
+}
+
+
+
+function coerceCellValue(v) {
+  // v may already be number/null from original load, or string from edits
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number') return v;
+
+  const s = String(v);
+
+  // empty => NULL
+  if (s.trim() === '') return null;
+
+  // If it's a clean integer/float string, store as number
+  // (This keeps TEXT IDs like "1X1" as text.)
+  const num = Number(s);
+  if (Number.isFinite(num) && String(num) === s.trim()) return num;
+
+  return s;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+function escapeAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+

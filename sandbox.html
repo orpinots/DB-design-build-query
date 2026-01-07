@@ -55,12 +55,11 @@
       <div class="control-group">
         <button id="run-button" onclick="executeQuery()">▶️ Run Query</button>
 
-        <label for="table-list">Show Data:</label>
+        <label for="table-list">Show/Edit Data:</label>
         <select id="table-list">
           <option value="">-- Select Table --</option>
         </select>
-        <button id="show-table-data-button" onclick="showTableData()">📋 View</button>
-
+		<button id="show-table-data-button" onclick="showEditTableData()">✏️ Show/Edit</button>
         <button id="save-query-button" onclick="saveQuery()">💾 Save Query</button>
         <button onclick="deleteQuery()">🗑️ Delete Query</button>
         <label for="saved-queries">Load Query:</label>
@@ -84,7 +83,39 @@
 
     <div id="query-output-content">
       <div id="status-message" class="message-box success">Run a query to see the output here.</div>
+	  <!-- NEW: shows only while editing (via .edit-mode on body) -->
+	  <div id="query-preview-badge">
+	    <span class="pill">
+	      <span class="dot"></span>
+	      Preview (read-only) while editing
+	    </span>
+	  </div>
+	  
       <div id="results-table"></div>
+
+      <!-- =========================================================
+           Edit Table Data Panel (hidden until user clicks Show/Edit)
+           sandbox.js will populate #edit-grid-wrap
+      ========================================================== -->
+      <div id="edit-panel" class="edit-panel" style="display:none; margin-top:12px;">
+        <div class="edit-panel-header" style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+          <div>
+            <strong id="edit-table-title">Edit Table:</strong>
+            <span id="edit-table-name" style="margin-left:6px;"></span>
+          </div>
+          <div id="edit-panel-hint" class="muted" style="font-size:12px;">
+            Edit cells, add/remove rows, then click “Update schema SQL”.
+          </div>
+        </div>
+
+        <div id="edit-grid-wrap"></div>
+
+        <div class="edit-panel-footer" style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+          <button type="button" onclick="closeEditPanel()">Cancel</button>
+          <button type="button" class="primary" onclick="applyEditsAndUpdateSchemaSql()">Update schema SQL</button>
+        </div>
+      </div>
+      <!-- ========================================================= -->
     </div>
   </div>
 </div>
