@@ -96,8 +96,9 @@ async function initDb() {
 	if (!schemaScript) throw new Error("Schema script cannot be empty.");
 
 	const { ddl } = splitDdlAndData(schemaScript);
-	lastCreateOrder = extractCreateOrder(ddl);
-
+	const reorderedDdl = reorderDdlByForeignKeys(ddl);
+	lastCreateOrder = extractCreateOrderFromDdl(reorderedDdl);
+	
 	db.run(schemaScript);
 	
     statusMessage.className = 'message-box success';
@@ -562,8 +563,17 @@ function refreshDbScriptTextareaFromLiveDb() {
   if (!db) return;
 
   const { ddl } = splitDdlAndData(dbScriptInput.value);
-  const inserts = exportAllInsertsInCreateOrder(lastCreateOrder.length ? lastCreateOrder : []);
-  const rebuilt = inserts ? `${ddl}\n\n${inserts}\n` : `${ddl}\n`;
+
+  // Reorder CREATE TABLE statements to respect FK dependencies
+  const reorderedDdl = reorderDdlByForeignKeys(ddl);
+
+  // Update create-order cache to match the reordered DDL
+  lastCreateOrder = extractCreateOrderFromDdl(reorderedDdl);
+
+  // Regenerate INSERT statements in that same order
+  const inserts = exportAllInsertsInCreateOrder(lastCreateOrder);
+  const rebuilt = inserts ? `${reorderedDdl}\n\n${inserts}\n` : `${reorderedDdl}\n`;
+
   dbScriptInput.value = rebuilt;
 }
 
@@ -841,3 +851,156 @@ function escapeAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
+// ---------- Helpers to reorder create table command in PK-safe order ----------
+
+function normalizeIdent(name) {
+  return String(name || '')
+    .trim()
+    .replace(/^["`[]/, '')
+    .replace(/["`\]]$/, '');
+}
+
+function parseCreateTableBlocks(ddlText) {
+  const ddl = ddlText || '';
+  const blocks = [];
+  const nonCreateLines = [];
+
+  // We'll find CREATE TABLE blocks by scanning for "CREATE TABLE" and then
+  // consuming until the next semicolon that ends the statement.
+  const re = /(^|\n)\s*CREATE\s+TABLE\b/ig;
+  let starts = [];
+  let m;
+  while ((m = re.exec(ddl)) !== null) starts.push(m.index + (m[1] ? m[1].length : 0));
+  if (!starts.length) {
+    return { nonCreate: ddl.trim(), blocks: [] };
+  }
+
+  // Collect everything before first CREATE as non-create
+  nonCreateLines.push(ddl.slice(0, starts[0]).trim());
+
+  // Extract CREATE statements
+  for (let i = 0; i < starts.length; i++) {
+    const start = starts[i];
+    const end = (i + 1 < starts.length) ? starts[i + 1] : ddl.length;
+    const chunk = ddl.slice(start, end);
+
+    // Split this chunk into: CREATE statement up to first semicolon, then leftover
+    const semiIdx = chunk.indexOf(';');
+    if (semiIdx === -1) {
+      // malformed/no semicolon; treat as whole statement
+      blocks.push(chunk.trim());
+      continue;
+    }
+    const stmt = chunk.slice(0, semiIdx + 1).trim();
+    const tail = chunk.slice(semiIdx + 1).trim();
+    blocks.push(stmt);
+    if (tail) nonCreateLines.push(tail); // rare, but keep anything after semicolon
+  }
+
+  return {
+    nonCreate: nonCreateLines.filter(Boolean).join('\n\n').trim(),
+    blocks
+  };
+}
+
+function getCreateTableName(createStmt) {
+  // CREATE TABLE [IF NOT EXISTS] tableName (
+  const re = /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(["`[]?)([A-Za-z_][\w]*)\1\s*\(/i;
+  const m = createStmt.match(re);
+  return m ? normalizeIdent(m[2]) : null;
+}
+
+function getReferencedTables(createStmt) {
+  // Handles: REFERENCES otherTable(...) with optional quoting
+  const refs = new Set();
+  const re = /\bREFERENCES\s+(["`[]?)([A-Za-z_][\w]*)\1\b/ig;
+  let m;
+  while ((m = re.exec(createStmt)) !== null) {
+    refs.add(normalizeIdent(m[2]));
+  }
+  return [...refs];
+}
+
+function topoSortTables(nodesInOriginalOrder) {
+  // nodes: [{name, stmt, deps: [parent1,parent2,...]}]
+  const byName = new Map(nodesInOriginalOrder.map(n => [n.name, n]));
+  const indeg = new Map();
+  const adj = new Map();
+
+  // init
+  nodesInOriginalOrder.forEach(n => {
+    indeg.set(n.name, 0);
+    adj.set(n.name, []);
+  });
+
+  // edges: parent -> child
+  nodesInOriginalOrder.forEach(n => {
+    n.deps.forEach(parent => {
+      if (!byName.has(parent)) return; // ignore external refs
+      adj.get(parent).push(n.name);
+      indeg.set(n.name, (indeg.get(n.name) || 0) + 1);
+    });
+  });
+
+  // Kahn's algorithm, stable using original order
+  const queue = nodesInOriginalOrder
+    .filter(n => (indeg.get(n.name) || 0) === 0)
+    .map(n => n.name);
+
+  const out = [];
+  const inQueue = new Set(queue);
+
+  while (queue.length) {
+    const name = queue.shift();
+    out.push(name);
+    (adj.get(name) || []).forEach(child => {
+      indeg.set(child, indeg.get(child) - 1);
+      if (indeg.get(child) === 0 && !inQueue.has(child)) {
+        queue.push(child);
+        inQueue.add(child);
+      }
+    });
+  }
+
+  // Cycle / unresolved case: fall back to original order for the remaining
+  if (out.length !== nodesInOriginalOrder.length) {
+    const remaining = nodesInOriginalOrder.map(n => n.name).filter(nm => !out.includes(nm));
+    return [...out, ...remaining];
+  }
+
+  return out;
+}
+
+function reorderDdlByForeignKeys(ddlText) {
+  const { nonCreate, blocks } = parseCreateTableBlocks(ddlText);
+  if (!blocks.length) return ddlText.trim();
+
+  const nodes = blocks
+    .map(stmt => {
+      const name = getCreateTableName(stmt);
+      return name ? { name, stmt, deps: getReferencedTables(stmt) } : null;
+    })
+    .filter(Boolean);
+
+  if (!nodes.length) return ddlText.trim();
+
+  const order = topoSortTables(nodes);
+  const byName = new Map(nodes.map(n => [n.name, n.stmt]));
+  const sortedCreates = order.map(nm => byName.get(nm)).filter(Boolean);
+
+  const parts = [];
+  if (nonCreate) parts.push(nonCreate);
+  parts.push(sortedCreates.join('\n\n'));
+
+  return parts.filter(Boolean).join('\n\n').trim();
+}
+
+function extractCreateOrderFromDdl(ddlText) {
+  const { blocks } = parseCreateTableBlocks(ddlText);
+  const names = [];
+  blocks.forEach(stmt => {
+    const nm = getCreateTableName(stmt);
+    if (nm) names.push(nm);
+  });
+  return [...new Set(names)];
+}
