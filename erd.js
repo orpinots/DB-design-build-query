@@ -1590,14 +1590,15 @@ function openEntityModal(ent) {
 
   ent.attributes.forEach(a => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input type="text" value="${a.name || ""}" class="attr-name"></td>
-      <td><select class="attr-type"></select></td>
-      <td style="text-align:center;"><input type="checkbox" class="attr-nn" ${a.notNull || a.pk ? "checked" : ""}></td>
-      <td style="text-align:center;"><input type="checkbox" class="attr-uniq" ${a.unique ? "checked" : ""}></td>
-      <td style="text-align:center;"><input type="checkbox" class="attr-pk" ${a.pk ? "checked" : ""}></td>
-      <td style="text-align:center;"><button onclick="removeAttrRow(this)">✕</button></td>
-    `;
+	tr.innerHTML = `
+	  <td><input type="text" value="${a.name || ""}" class="attr-name"></td>
+	  <td><select class="attr-type"></select></td>
+	  <td style="text-align:center;"><input type="checkbox" class="attr-nn" ${a.notNull || a.pk ? "checked" : ""}></td>
+	  <td style="text-align:center;"><input type="checkbox" class="attr-uniq" ${a.unique ? "checked" : ""}></td>
+	  <td style="text-align:center;"><input type="checkbox" class="attr-pk" ${a.pk ? "checked" : ""}></td>
+	  <td style="text-align:center;"><input type="checkbox" class="attr-multi" ${a.multi ? "checked" : ""}></td>
+	  <td style="text-align:center;"><button onclick="removeAttrRow(this)">✕</button></td>
+	`;
     entityAttrBody.appendChild(tr);
     const selectEl = tr.querySelector(".attr-type");
     populateTypeSelect(selectEl, a.type || "TEXT");
@@ -1622,6 +1623,7 @@ function addAttrRow() {
     <td style="text-align:center;"><input type="checkbox" class="attr-nn"></td>
     <td style="text-align:center;"><input type="checkbox" class="attr-uniq"></td>
     <td style="text-align:center;"><input type="checkbox" class="attr-pk"></td>
+    <td style="text-align:center;"><input type="checkbox" class="attr-multi"></td>
     <td style="text-align:center;"><button onclick="removeAttrRow(this)">✕</button></td>
   `;
   entityAttrBody.appendChild(tr);
@@ -1745,19 +1747,34 @@ function saveEntityModal() {
     const name = row.querySelector(".attr-name").value.trim();
     if (!name) return;
     const type = row.querySelector(".attr-type").value.trim() || "TEXT";
-    const notNull = row.querySelector(".attr-nn").checked;
-    const unique  = row.querySelector(".attr-uniq").checked;
-    const pk      = row.querySelector(".attr-pk").checked;
 
-    const base = { name, type, notNull, unique, pk };
+	const notNull = row.querySelector(".attr-nn").checked;
+	const unique  = row.querySelector(".attr-uniq").checked;
+	const pk      = row.querySelector(".attr-pk").checked;
+	const multi   = row.querySelector(".attr-multi")?.checked || false;
+	if (multi && pk) {
+	  // simplest: auto-fix and keep going
+	  // (or you could alert + return)
+	  // eslint-disable-next-line no-console
+	  console.warn(`Attribute "${name}" cannot be both multi-valued and PK; clearing PK.`);
+	}
+	const pkFinal = (multi ? false : pk);
+	const base = { name, type, notNull, unique, pk: pkFinal, multi };
+//	const base = { name, type, notNull, unique, pk, multi };
 
 	const old = oldAttrs.find(a => a.name === name);
 	if (old) {
 	  if (typeof old.ovalX === "number") base.ovalX = old.ovalX;
 	  if (typeof old.ovalY === "number") base.ovalY = old.ovalY;
-	  if (old.fk) base.fk = true;                         // ✅ preserve FK flag
-	  if (old.references) base.references = old.references; // ✅ preserve FK target
+	  if (old.fk) base.fk = true;
+	  if (old.references) base.references = old.references;
+
+	  // preserve multi if user didn’t change it (or if row didn’t include it somehow)
+	  if (typeof old.multi === "boolean" && !row.querySelector(".attr-multi")) {
+	    base.multi = old.multi;
+	  }
 	}
+
     newAttrs.push(base);
   });
   
@@ -2164,6 +2181,7 @@ function makeInitialTableMap() {
       // we don't store actual FK targets on attributes yet,
       // but we'll add .references when we create/join FKs.
       references: a.references || null
+	  multi: !!a.multi
     }));
 
     tableMap.set(ent.id, {
@@ -2330,6 +2348,8 @@ function convertRelationshipToAssociative(rel) {
         table: ent.name,
         column: pkAttr.name
       }
+	  // optional: associative entity keys are never multi-valued
+	  multi: false
     });
   }
 
@@ -2355,6 +2375,7 @@ function convertRelationshipToAssociative(rel) {
       pk: false,
       fk: false,
       notNull: !!a.notNull
+	  multi: false	
     });
   });
 
