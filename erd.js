@@ -1595,8 +1595,8 @@ function openEntityModal(ent) {
 	  <td><select class="attr-type"></select></td>
 	  <td style="text-align:center;"><input type="checkbox" class="attr-nn" ${a.notNull || a.pk ? "checked" : ""}></td>
 	  <td style="text-align:center;"><input type="checkbox" class="attr-uniq" ${a.unique ? "checked" : ""}></td>
-	  <td style="text-align:center;"><input type="checkbox" class="attr-pk" ${a.pk ? "checked" : ""}></td>
 	  <td style="text-align:center;"><input type="checkbox" class="attr-multi" ${a.multi ? "checked" : ""}></td>
+	  <td style="text-align:center;"><input type="checkbox" class="attr-pk" ${a.pk ? "checked" : ""}></td>
 	  <td style="text-align:center;"><button onclick="removeAttrRow(this)">✕</button></td>
 	`;
     entityAttrBody.appendChild(tr);
@@ -1622,8 +1622,8 @@ function addAttrRow() {
     <td><select class="attr-type"></select></td>
     <td style="text-align:center;"><input type="checkbox" class="attr-nn"></td>
     <td style="text-align:center;"><input type="checkbox" class="attr-uniq"></td>
-    <td style="text-align:center;"><input type="checkbox" class="attr-pk"></td>
     <td style="text-align:center;"><input type="checkbox" class="attr-multi"></td>
+    <td style="text-align:center;"><input type="checkbox" class="attr-pk"></td>
     <td style="text-align:center;"><button onclick="removeAttrRow(this)">✕</button></td>
   `;
   entityAttrBody.appendChild(tr);
@@ -2180,7 +2180,7 @@ function makeInitialTableMap() {
       fk: !!a.fk,
       // we don't store actual FK targets on attributes yet,
       // but we'll add .references when we create/join FKs.
-      references: a.references || null
+      references: a.references || null,
 	  multi: !!a.multi
     }));
 
@@ -2347,7 +2347,7 @@ function convertRelationshipToAssociative(rel) {
       references: {
         table: ent.name,
         column: pkAttr.name
-      }
+      },
 	  // optional: associative entity keys are never multi-valued
 	  multi: false
     });
@@ -2374,7 +2374,7 @@ function convertRelationshipToAssociative(rel) {
       type: a.type || "TEXT",
       pk: false,
       fk: false,
-      notNull: !!a.notNull
+      notNull: !!a.notNull,
 	  multi: false	
     });
   });
