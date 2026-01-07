@@ -247,22 +247,24 @@ function getAttrLabel(attr, inOvals, isDiscriminator = false) {
   const base = attr.name || "";
 
   if (inOvals) {
-    // ✅ Ovals mode: always clean text, no PK/FK tags ever
+    // ✅ Ovals mode: always clean text, no PK/FK/MULTI tags ever
     return base;
   }
 
-  // ✅ Box mode: show PK/FK tags next to the name
+  // ✅ Box mode: show PK/FK/MULTI tags next to the name
   const tags = [];
 
   if (attr.pk) tags.push("PK");
   if (attr.fk) tags.push("FK");
+
+  // ✅ NEW: multi-valued attribute marker
+  if (attr.multi) tags.push(":*");
 
   // (Discriminator does NOT affect text here —
   // it only affects the dashed underline in SVG)
   const suffix = tags.length ? ` [${tags.join(", ")}]` : "";
   return `${base}${suffix}`;
 }
-
 
 function isBorrowedOwnerKey(ent, attr) {
   // In a weak entity, borrowed owner keys are PK *and* FK
@@ -1017,15 +1019,32 @@ function drawAttributeOvalsForEntity(ent) {
     line.setAttribute("stroke-width","1.3");
     svg.appendChild(line);
 
-    const ell = document.createElementNS(svgNS,"ellipse");
-    ell.setAttribute("cx", ovalX);
-    ell.setAttribute("cy", ovalY);
-    ell.setAttribute("rx", rx);
-    ell.setAttribute("ry", ry);
-    ell.setAttribute("fill","#fff");
-    ell.setAttribute("stroke","#222");
-    svg.appendChild(ell);
+    // --- draw oval(s) ---
+    const isMulti = !!a.multi;
 
+    // Outer ellipse (always)
+    const ellOuter = document.createElementNS(svgNS, "ellipse");
+    ellOuter.setAttribute("cx", ovalX);
+    ellOuter.setAttribute("cy", ovalY);
+    ellOuter.setAttribute("rx", rx);
+    ellOuter.setAttribute("ry", ry);
+    ellOuter.setAttribute("fill", "#fff");
+    ellOuter.setAttribute("stroke", "#222");
+    svg.appendChild(ellOuter);
+
+    // Inner ellipse (only for multi-valued attributes)
+    if (isMulti) {
+      const inset = 4; // spacing between the two ovals (tweak to taste)
+      const ellInner = document.createElementNS(svgNS, "ellipse");
+      ellInner.setAttribute("cx", ovalX);
+      ellInner.setAttribute("cy", ovalY);
+      ellInner.setAttribute("rx", rx - inset);
+      ellInner.setAttribute("ry", ry - inset);
+      ellInner.setAttribute("fill", "none");
+      ellInner.setAttribute("stroke", "#222");
+      svg.appendChild(ellInner);
+    }
+	
     const text = document.createElementNS(svgNS,"text");
     text.setAttribute("x", ovalX);
     text.setAttribute("y", ovalY + 4);
