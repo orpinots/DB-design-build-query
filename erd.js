@@ -53,24 +53,26 @@ function getAttrLabel(attr, inOvals, isDiscriminator = false) {
   const base = attr.name || "";
 
   if (inOvals) {
-    // ✅ Ovals mode: always clean text, no PK/FK/MULTI tags ever
+    // ✅ Ovals mode: always clean text
     return base;
   }
 
-  // ✅ Box mode: show PK/FK/MULTI tags next to the name
+  // ✅ Box mode: show structural tags
   const tags = [];
 
   if (attr.pk) tags.push("PK");
   if (attr.fk) tags.push("FK");
 
-  // ✅ NEW: multi-valued attribute marker
+  // Multi-valued attribute
   if (attr.multi) tags.push(":*");
 
-  // (Discriminator does NOT affect text here —
-  // it only affects the dashed underline in SVG)
+  // Optional attribute (only if NOT a PK)
+  if (!attr.pk && !attr.notNull) tags.push("O");
+
   const suffix = tags.length ? ` [${tags.join(", ")}]` : "";
   return `${base}${suffix}`;
 }
+
 
 function isBorrowedOwnerKey(ent, attr) {
   // In a weak entity, borrowed owner keys are PK *and* FK
@@ -789,21 +791,33 @@ function drawAttributeOvalsForEntity(ent) {
 
   const attrs = ent.attributes || [];
   if (!attrs.length) return;
-  // For weak entities, hide borrowed owner keys (PK+FK)
-  // and, for specialization subtypes, hide inherited PKs from the supertype.
+
   const visible = attrs
-    .map((a, idx) => ({ attr: a, idx }))           // keep original index
+    .map((a, idx) => ({ attr: a, idx })) // keep original index
     .filter(({ attr }) =>
       !isBorrowedOwnerKey(ent, attr) &&
-      !isInheritedPkFromSuper(ent, attr)           // 🔹 hide inherited PKs
+      !isInheritedPkFromSuper(ent, attr)
     );
+
   if (!visible.length) return;
 
-  const rx = 40, ry = 16;
   const side = -1;               // left side by default
   const gapFromBox = 40;
-  const baseX = centerX + side * (halfW + gapFromBox + rx);
   const verticalSpacing = 40;
+
+  // ---- NEW: compute a single "column rx" (max needed among visible attrs)
+  const MIN_RX = 40;
+  const CHAR_PX = 6;  // tweak: 6–7 feels about right at 12px font
+  const rxCol = visible.reduce((mx, { attr: a }) => {
+    const base = a.name || "";
+    const extra = (!a.pk && a.notNull !== true) ? " (O)" : "";
+    const textLen = (base + extra).length;
+    const rx = Math.max(MIN_RX, textLen * CHAR_PX);
+    return Math.max(mx, rx);
+  }, MIN_RX);
+
+  // Use column rx so all ovals align nicely
+  const baseX = centerX + side * (halfW + gapFromBox + rxCol);
   const baseStartY = centerY - ((visible.length - 1) * verticalSpacing) / 2;
 
   visible.forEach(({ attr: a, idx }, i) => {
@@ -812,6 +826,14 @@ function drawAttributeOvalsForEntity(ent) {
 
     const ovalX = (typeof a.ovalX === "number") ? a.ovalX : defX;
     const ovalY = (typeof a.ovalY === "number") ? a.ovalY : defY;
+
+    // ---- NEW: per-attribute rx (so long names get wider ovals)
+    const baseLabel = a.name || "";
+    const optExtra  = (!a.pk && a.notNull !== true) ? " (O)" : "";
+    const labelText = baseLabel + optExtra;
+
+    const rx = Math.max(MIN_RX, labelText.length * CHAR_PX);
+    const ry = 16;
 
     // point on entity’s box edge toward the oval
     const edge = edgePoint(centerX, centerY, ovalX, ovalY, halfW, halfH, 0);
@@ -828,7 +850,6 @@ function drawAttributeOvalsForEntity(ent) {
     // --- draw oval(s) ---
     const isMulti = !!a.multi;
 
-    // Outer ellipse (always)
     const ellOuter = document.createElementNS(svgNS, "ellipse");
     ellOuter.setAttribute("cx", ovalX);
     ellOuter.setAttribute("cy", ovalY);
@@ -838,36 +859,29 @@ function drawAttributeOvalsForEntity(ent) {
     ellOuter.setAttribute("stroke", "#222");
     svg.appendChild(ellOuter);
 
-    // Inner ellipse (only for multi-valued attributes)
     if (isMulti) {
-      const inset = 4; // spacing between the two ovals (tweak to taste)
+      const inset = 4;
       const ellInner = document.createElementNS(svgNS, "ellipse");
       ellInner.setAttribute("cx", ovalX);
       ellInner.setAttribute("cy", ovalY);
-      ellInner.setAttribute("rx", rx - inset);
-      ellInner.setAttribute("ry", ry - inset);
+      ellInner.setAttribute("rx", Math.max(1, rx - inset));
+      ellInner.setAttribute("ry", Math.max(1, ry - inset));
       ellInner.setAttribute("fill", "none");
       ellInner.setAttribute("stroke", "#222");
       svg.appendChild(ellInner);
     }
-	
+
     const text = document.createElementNS(svgNS,"text");
     text.setAttribute("x", ovalX);
     text.setAttribute("y", ovalY + 4);
     text.setAttribute("text-anchor","middle");
     text.style.fontSize = "12px";
-
-    const isDiscr = isDiscriminatorKey(ent, a);
-
-    // Ovals view: no [PK]/[FK] tags; pass discriminator flag to label helper
-    const labelText = getAttrLabel(a, true, isDiscr);
     text.textContent = labelText;
     svg.appendChild(text);
 
-    // Underlines:
-    //  - Strong PKs (or non-weak PKs): solid underline
-    //  - Weak discriminators: dashed underline
-    //  - Borrowed owner keys: already filtered out above
+    const isDiscr = isDiscriminatorKey(ent, a);
+
+    // Underlines for PK (solid) / discriminator (dashed underline)
     if (a.pk) {
       text.setAttribute("font-weight","bold");
 
@@ -880,11 +894,7 @@ function drawAttributeOvalsForEntity(ent) {
       underline.setAttribute("stroke","#222");
       underline.setAttribute("stroke-width","1");
 
-      if (isDiscr) {
-        // dashed underline for partial key (Chen notation)
-        underline.setAttribute("stroke-dasharray", "3,3");
-      }
-
+      if (isDiscr) underline.setAttribute("stroke-dasharray", "3,3");
       svg.appendChild(underline);
     }
 
@@ -894,7 +904,6 @@ function drawAttributeOvalsForEntity(ent) {
     hit.style.left = (ovalX - 12) + "px";
     hit.style.top  = (ovalY - 12) + "px";
     hit.dataset.entId = ent.id;
-    // Use the ORIGINAL attribute index so editing still maps correctly
     hit.dataset.attrIndex = String(idx);
     hit.dataset.ovalX = String(ovalX);
     hit.dataset.ovalY = String(ovalY);
