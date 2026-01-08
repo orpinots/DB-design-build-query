@@ -500,13 +500,34 @@ function drawRelationship(r) {
   let aEnd, bEnd;
 
   if (isUnary) {
-    // Unary: two legs up to the same EMPLOYEE box.
-    // Attach at two points along the top edge (left/right of center).
-    const topY    = a.y;                // top edge of the box
-    const offsetX = aHalfW * 0.35;      // 35% of half-width
+    // Unary: attach to the box edge in the direction of the diamond,
+    // then split into two nearby points along the perpendicular.
+    const cx = axCenter;
+    const cy = ayCenter;
 
-    aEnd = { x: axCenter - offsetX, y: topY };
-    bEnd = { x: axCenter + offsetX, y: topY };
+    // Where the "main" leg would hit the box edge, toward the diamond
+    const base = edgePoint(
+      cx, cy, mx, my,
+      aHalfW, aHalfH,
+      0
+    );
+
+    // Vector from base -> diamond, for a stable perpendicular
+    const dx = mx - base.x;
+    const dy = my - base.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+
+    // Perpendicular direction
+    const px = -uy;
+    const py = ux;
+
+    // How far apart the two attachment points are
+    const sep = 16; // tweak to taste (12–22 is typical)
+
+    aEnd = { x: base.x + px * sep, y: base.y + py * sep };
+    bEnd = { x: base.x - px * sep, y: base.y - py * sep };
   } else {
     // Normal binary / n-ary:
     aEnd = edgePoint(
