@@ -2728,6 +2728,47 @@ function saveErdLayout() {
   alert(`ERD layout "${name}" saved.`);
 }
 
+
+function loadErdLayout(idxStr) {
+  if (idxStr == null || idxStr === "") return;
+
+  const saved = JSON.parse(localStorage.getItem(ERD_STORAGE_KEY) || "[]");
+  const idx = Number(idxStr);
+
+  if (!Number.isFinite(idx) || idx < 0 || idx >= saved.length) return;
+
+  const item = saved[idx];
+  if (!item) return;
+
+  // Expect shape like: { name, erd: {entities, relationships} }
+  // (fallbacks included just in case older saves used a different property name)
+  const loaded = item.erd || item.data || item;
+  if (!loaded || !Array.isArray(loaded.entities) || !Array.isArray(loaded.relationships)) {
+    alert("Saved ERD is missing entities/relationships.");
+    return;
+  }
+
+  erd = cloneErd(loaded);
+
+  // Persist so schema.html / sandbox.html see the same current ERD
+  saveCurrentErdState(erd);
+
+  // Redraw canvas
+  render();
+
+  // Optional nice touch: clear the dropdown selection after load
+  const sel = document.getElementById("savedErdSelect");
+  if (sel) sel.value = "";
+
+  // Optional: refresh time machine menu if you want it to reflect the loaded ERD immediately
+  if (typeof refreshTimeMachineDropdown === "function") refreshTimeMachineDropdown();
+}
+
+// Make it callable from inline HTML onchange="..."
+window.loadErdLayout = loadErdLayout;
+
+
+
 function ErdLayout(value) {
   if (value === "") return;
 
