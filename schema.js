@@ -63,6 +63,15 @@ async function buildSchema() {
     const sql = data.sql || "";
     const mermaid = data.mermaid || "";
 
+	if (!sql.trim() && !mermaid.trim()) {
+	  sqlOut.value =
+	    "-- Backend returned empty output.\n" +
+	    "-- Check DevTools Console for payload/response.\n";
+	  mermaidOut.value =
+	    "erDiagram\n  %% Backend returned empty output (see console).";
+	  return;
+	}
+	
     sqlOut.value = sql;
     mermaidOut.value = mermaid;
 
