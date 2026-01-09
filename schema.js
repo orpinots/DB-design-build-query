@@ -2,7 +2,7 @@
 "use strict";
 
 // local copy loaded from ERD builder storage
-let erd = loadCurrentErdState() || { entities: [], relationships: [] };
+let erd = loadCurrentErd() || { entities: [], relationships: [] };
 
 // Pre-fill textareas if we already generated output earlier
 const sqlOut = document.getElementById("sqlOut");
@@ -16,7 +16,7 @@ async function buildSchema() {
   mermaidOut.value = "erDiagram\n  %% Building schema remotely…";
 
   // always use latest ERD from storage (in case erd.html changed it)
-  erd = loadCurrentErdState() || erd;
+  erd = loadCurrentErd() || erd;
 
   try {
     const resp = await fetch(BACKEND_URL + "/build-schema", {
@@ -67,8 +67,8 @@ async function loadMermaidToErd() {
     erd = data.erd;
 
     // Save it so erd.html picks it up
-	saveCurrentErdState(erd);
-	
+    saveCurrentErd(erd);
+
     sqlOut.value =
       "-- ERD successfully reconstructed from Mermaid.\n" +
       "-- Go back to ERD Builder to edit it.";
