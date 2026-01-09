@@ -786,18 +786,19 @@ function drawRelationship(r) {
         (typeof aAttr.ovalX === "number") ? aAttr.ovalX : defX;
       const ovalY =
         (typeof aAttr.ovalY === "number") ? aAttr.ovalY : defY;
-
-      const connector = document.createElementNS(svgNS, "line");
-      connector.setAttribute("x1", mx);
-      connector.setAttribute("y1", my);
-      connector.setAttribute("x2", ovalX);
-      connector.setAttribute(
-        "y2",
-        ovalY > my ? ovalY - ry : ovalY + ry
-      );
-      connector.setAttribute("stroke", "#222");
-      connector.setAttribute("stroke-width", "1.3");
-      svg.appendChild(connector);
+	  
+	  const connector = document.createElementNS(svgNS, "line");
+	  connector.setAttribute("x1", mx);
+	  connector.setAttribute("y1", my);
+	  // Compute where the line from the oval center toward the diamond
+	  // intersects the ellipse boundary.
+	  // const hit = edgePoint(ovalX, ovalY, mx, my, rx, ry, 0);
+	  const hit = ellipseEdgePoint(ovalX, ovalY, mx, my, rx, ry, 0);	  
+	  connector.setAttribute("x2", hit.x);
+	  connector.setAttribute("y2", hit.y);
+	  connector.setAttribute("stroke", "#222");
+	  connector.setAttribute("stroke-width", "1.3");
+	  svg.appendChild(connector);
 
       const ell = document.createElementNS(svgNS, "ellipse");
       ell.setAttribute("cx", ovalX);
@@ -865,7 +866,7 @@ function drawAttributeOvalsForEntity(ent) {
 
   // ---- NEW: compute a single "column rx" (max needed among visible attrs)
   const MIN_RX = 40;
-  const CHAR_PX = 4;  // tweak: 6–7 feels about right at 12px font
+  const CHAR_PX = 5;  // tweak: 6–7 feels about right at 12px font
   const rxCol = visible.reduce((mx, { attr: a }) => {
     const base = a.name || "";
     const extra = (!a.pk && a.notNull !== true) ? " (O)" : "";
@@ -985,6 +986,32 @@ function edgePoint(cx, cy, otherX, otherY, halfW, halfH, extra) {
   const t     = tEdge + extra;
   return { x: cx + ux * t, y: cy + uy * t };
 }
+
+function ellipseEdgePoint(cx, cy, towardX, towardY, rx, ry, extra = 0) {
+  const dx = towardX - cx;
+  const dy = towardY - cy;
+
+  // If degenerate, just return center
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+
+  // Scale factor to hit ellipse boundary:
+  // (x/rx)^2 + (y/ry)^2 = 1  along the ray (dx,dy)
+  const s = 1 / Math.sqrt((dx*dx) / (rx*rx) + (dy*dy) / (ry*ry));
+
+  // Base hit point on ellipse
+  let x = cx + dx * s;
+  let y = cy + dy * s;
+
+  // Optional: extend slightly beyond the ellipse (usually leave extra=0)
+  if (extra) {
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    x += (dx / len) * extra;
+    y += (dy / len) * extra;
+  }
+
+  return { x, y };
+}
+
 
 function drawCrowFoot(tipX, tipY, otherX, otherY) {
   // Vector FROM Tip (box edge) TO Diamond
