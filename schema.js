@@ -4,6 +4,34 @@
 // local copy loaded from ERD builder storage
 let erd = loadCurrentErd() || { entities: [], relationships: [] };
 
+function normalizeErdForBackend(src) {
+  const out = cloneErd(src || { entities: [], relationships: [] });
+
+  (out.entities || []).forEach(ent => {
+    ent.id = ent.id || (ent.name || "").toLowerCase().replace(/\s+/g, "");
+    ent.name = ent.name || ent.id || "Entity";
+
+    (ent.attributes || []).forEach(a => {
+      a.name = a.name || "attr";
+
+      // defaults many schema builders assume exist
+      if (!a.type) a.type = "TEXT";
+      if (typeof a.notNull !== "boolean") a.notNull = false;
+
+      if (typeof a.pk !== "boolean") a.pk = !!a.pk;
+      if (typeof a.fk !== "boolean") a.fk = !!a.fk;
+      if (typeof a.unique !== "boolean") a.unique = !!a.unique;
+      if (typeof a.multi !== "boolean") a.multi = !!a.multi;
+    });
+  });
+
+  out.relationships = out.relationships || [];
+  return out;
+}
+
+
+
+
 // Pre-fill textareas if we already generated output earlier
 const sqlOut = document.getElementById("sqlOut");
 const mermaidOut = document.getElementById("mermaidOut");
@@ -16,7 +44,8 @@ async function buildSchema() {
   mermaidOut.value = "erDiagram\n  %% Building schema remotely…";
 
   // always use latest ERD from storage (in case erd.html changed it)
-  erd = loadCurrentErd() || erd;
+  erd = normalizeErdForBackend(loadCurrentErd() || erd);
+
 
   try {
     const resp = await fetch(BACKEND_URL + "/build-schema", {
