@@ -1531,7 +1531,9 @@ function refreshTimeMachineDropdown() {
 
   const opt0 = document.createElement("option");
   opt0.value = "";
-  opt0.textContent = snapshots.length ? "Select a restore point…" : "(no snapshots yet)";
+  opt0.textContent = snapshots.length
+    ? "Select a restore point…"
+    : "(no snapshots yet)";
   sel.appendChild(opt0);
 
   if (!snapshots.length) return;
@@ -1540,10 +1542,16 @@ function refreshTimeMachineDropdown() {
   const newestFirst = [...snapshots].reverse();
 
   newestFirst.forEach(s => {
-    const mins = Math.round((now - s.ts) / 60000); // ✅ FIX: mins is defined
+    const mins = Math.round((now - s.ts) / 60000);
     const opt = document.createElement("option");
     opt.value = String(s.ts);
-    opt.textContent = mins === 0 ? "-0 min (autosave)" : `-${mins} min (autosave)`;
+
+    if (mins <= 0) {
+      opt.textContent = "Just now (autosave)";
+    } else {
+      opt.textContent = `-${mins} min (autosave)`;
+    }
+
     sel.appendChild(opt);
   });
 }
