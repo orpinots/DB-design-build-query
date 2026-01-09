@@ -22,7 +22,7 @@ function findRelationshipById(rid) {
 
 
 // --- CURRENT (in-progress) ERD persistence ---
-const CURRENT_ERD_KEY = "erd_current_v1";
+const CURRENT_ERD_KEY = "erd_current";
 
 function saveCurrentErdState(erdObj) {
   try {
