@@ -1,5 +1,3 @@
-
-
 let db = null;
 // --- Keep track of CREATE-table order (from the user's script) ---
 let lastCreateOrder = [];
@@ -92,15 +90,15 @@ async function initDb() {
     const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
     db = new SQL.Database();
 
-	const schemaScript = dbScriptInput.value.trim();
-	if (!schemaScript) throw new Error("Schema script cannot be empty.");
+    const schemaScript = dbScriptInput.value.trim();
+    if (!schemaScript) throw new Error("Schema script cannot be empty.");
 
-	const { ddl } = splitDdlAndData(schemaScript);
-	const reorderedDdl = reorderDdlByForeignKeys(ddl);
-	lastCreateOrder = extractCreateOrderFromDdl(reorderedDdl);
-	
-	db.run(schemaScript);
-	
+    const { ddl } = splitDdlAndData(schemaScript);
+    const reorderedDdl = reorderDdlByForeignKeys(ddl);
+    lastCreateOrder = extractCreateOrderFromDdl(reorderedDdl);
+
+    db.run(schemaScript);
+
     statusMessage.className = 'message-box success';
     statusMessage.textContent = '✅ Database successfully created and populated. You can now run queries.';
 
@@ -631,12 +629,12 @@ function openEditPanelForTable(tableName) {
   // Show panel + switch to results view
   switchOutputView('results');
   editPanel.style.display = 'block';
-  
+
   switchOutputView('results');
   editPanel.style.display = 'block';
   setEditMode(true);
   editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  
+
   // Keep Query Results in sync with the edited table (no side effects)
   showTablePreview(tableName);
 
@@ -719,39 +717,61 @@ function renderEditGrid() {
 }
 
 
+function addEditRow() {
+  const { tableName } = editState;
+  if (!tableName || !editState.columns.length) return;
 
-// --- Validate required fields before coercion/insert ---
-clearCellErrors();
+  // Row number (1-based) for the new row
+  const rowNum = editState.rows.length + 1;
 
-const meta = getTableColumnMeta(tableName);
-const colMetaByName = new Map(meta.map(m => [m.name, m]));
-const errors = [];
+  // Pull types + PK info from SQLite (best available signal)
+  const colsWithTypes = getTableColumnsWithTypes(tableName);
+  const typeByCol = new Map(colsWithTypes.map(x => [x.name, x.type]));
+  const pkByCol   = new Map(colsWithTypes.map(x => [x.name, x.pk]));
 
-rows.forEach((row, rIdx) => {
-  columns.forEach((colName, cIdx) => {
-    const m = colMetaByName.get(colName);
-    if (!m) return;
+  const newRow = editState.columns.map(colName => {
+    const colType = typeByCol.get(colName) || '';
+    const isPk = (pkByCol.get(colName) || 0) > 0;
 
-    // Required if NOT NULL or PK (PK implies required)
-    const required = m.notNull || m.pk;
-
-    if (required && isBlankCell(row[cIdx])) {
-      errors.push({ rIdx, cIdx, colName });
-      markCellError(rIdx, cIdx);
+    // ✅ exception: if column is PK integer, default to '' (so user must choose)
+    if (isPk && isType(colType, ['INT'])) {
+      return '';
     }
+
+    // Boolean-ish
+    if (isType(colType, ['BOOL', 'BOOLEAN'])) {
+      return String(randInt(0, 1));
+    }
+
+    // Integer-ish
+    if (isType(colType, ['INT'])) {
+      return String(randInt(1, 100));
+    }
+
+    // Real/float/decimal/numeric-ish
+    if (isType(colType, ['REAL', 'FLOA', 'DOUB', 'DEC', 'NUM'])) {
+      return String(randInt(1, 100));
+    }
+
+    // Date/Time-ish
+    if (isType(colType, ['DATETIME', 'TIMESTAMP'])) {
+      return randomDateTimeLast24Hours();
+    }
+    if (isType(colType, ['DATE'])) {
+      return randomDateLastYear();
+    }
+    if (isType(colType, ['TIME'])) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(randInt(0, 23))}:${pad(randInt(0, 59))}:${pad(randInt(0, 59))}`;
+    }
+
+    // Default: text-like placeholder = columnName + row#
+    return `${colName}${rowNum}`;
   });
-});
 
-if (errors.length) {
-  statusMessage.className = 'message-box error';
-  statusMessage.textContent =
-    `❌ Cannot apply edits: ${errors.length} required cell(s) are blank. ` +
-    `Fill highlighted cells (NOT NULL / PK) and try again.`;
-  return;
+  editState.rows.push(newRow);
+  renderEditGrid();
 }
-
-// Convert UI cell strings to typed-ish values:
-const typedRows = rows.map(row => row.map(v => coerceCellValue(v)));
 window.addEditRow = addEditRow;
 
 
@@ -782,6 +802,35 @@ function applyEditsAndUpdateSchemaSql() {
       editState.rows[r][c] = inp.value;
     }
   });
+
+  // ✅ NEW: Validate required fields BEFORE coercion/insert
+  clearCellErrors();
+  const meta = getTableColumnMeta(tableName);
+  const colMetaByName = new Map(meta.map(m => [m.name, m]));
+  const errors = [];
+
+  rows.forEach((row, rIdx) => {
+    columns.forEach((colName, cIdx) => {
+      const m = colMetaByName.get(colName);
+      if (!m) return;
+
+      // Required if NOT NULL or PK (PK implies required)
+      const required = m.notNull || m.pk;
+
+      if (required && isBlankCell(row[cIdx])) {
+        errors.push({ rIdx, cIdx, colName });
+        markCellError(rIdx, cIdx);
+      }
+    });
+  });
+
+  if (errors.length) {
+    statusMessage.className = 'message-box error';
+    statusMessage.textContent =
+      `❌ Cannot apply edits: ${errors.length} required cell(s) are blank. ` +
+      `Fill highlighted cells (NOT NULL / PK) and try again.`;
+    return;
+  }
 
   // Convert UI cell strings to typed-ish values:
   // - '' => NULL
@@ -885,7 +934,6 @@ function isType(typeStr, needles) {
   return needles.some(n => t.includes(n));
 }
 
-
 function coerceCellValue(v) {
   // v may already be number/null from original load, or string from edits
   if (v === null || v === undefined) return null;
@@ -902,6 +950,33 @@ function coerceCellValue(v) {
   if (Number.isFinite(num) && String(num) === s.trim()) return num;
 
   return s;
+}
+
+// ✅ NEW: required-field validation helpers
+function isBlankCell(v) {
+  return v === null || v === undefined || String(v).trim() === '';
+}
+
+function getTableColumnMeta(tableName) {
+  if (!db) return [];
+  const info = db.exec(`PRAGMA table_info(${tableName});`);
+  if (!info.length) return [];
+  return info[0].values.map(row => ({
+    name: row[1],
+    notNull: !!row[3],
+    pk: (Number(row[5] || 0) > 0)
+  }));
+}
+
+function clearCellErrors() {
+  editGridWrap.querySelectorAll('input.cell-input').forEach(inp => {
+    inp.classList.remove('cell-error');
+  });
+}
+
+function markCellError(rIdx, cIdx) {
+  const inp = editGridWrap.querySelector(`input.cell-input[data-r="${rIdx}"][data-c="${cIdx}"]`);
+  if (inp) inp.classList.add('cell-error');
 }
 
 function escapeHtml(str) {
