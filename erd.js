@@ -1559,7 +1559,7 @@ function restoreSnapshotByTs(tsStr) {
   erd = cloneErd(snap.erd);
 
   // Persist current state so page switches keep it
-  saveCurrentErdState(erd);
+  saveCurrentErd(erd);
 
   render();
 }
