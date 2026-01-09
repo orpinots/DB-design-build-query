@@ -414,19 +414,19 @@ function toggleAttrView() {
 // If a relationship has an explicit (x,y), use it.
 // Otherwise, fall back to a reasonable default position.
 //
-// Unary (recursive) relationships: if the two centers coincide,
-// place the diamond slightly above the entity center so we can
-// draw two legs back to the same box.
-function getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter) {
+// Unary (recursive) relationships: place the diamond above the entity's TOP edge
+// so it doesn't start buried inside the box.
+function getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter, aTopY) {
   if (typeof rel.x === "number" && typeof rel.y === "number") {
     return { x: rel.x, y: rel.y };
   }
 
-  // Unary: same entity on both sides
+  // Unary: same entity on both sides (centers coincide)
   if (axCenter === bxCenter && ayCenter === byCenter) {
+    const gapAboveBox = 26;  // tweak to taste: 20–40 is typical
     return {
       x: axCenter,
-      y: ayCenter - 40  // 40px above the entity center
+      y: (typeof aTopY === "number") ? (aTopY - gapAboveBox) : (ayCenter - 60)
     };
   }
 
@@ -529,7 +529,7 @@ function drawRelationship(r) {
   const crowMargin = 0.5;
 
   // ---- diamond position (possibly user-dragged) ----
-  const pos = getRelDiamondPosition(r, axCenter, ayCenter, bxCenter, byCenter);
+  const pos = getRelDiamondPosition(r, axCenter, ayCenter, bxCenter, byCenter, a.y);
   const mx  = pos.x;
   const my  = pos.y;
 
