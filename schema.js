@@ -63,12 +63,25 @@ async function buildSchema() {
     const sql = data.sql || "";
     const mermaid = data.mermaid || "";
 
-	if (!sql.trim() && !mermaid.trim()) {
+
+	// Mermaid "empty" cases we want to treat as empty output:
+	const sqlTrim = (sql || "").trim();
+	const merTrim = (mermaid || "").trim();
+	
+	const merIsEmpty =
+	  !merTrim ||
+	  merTrim === "erDiagram" ||
+	  /^erDiagram\s*%{0,2}\s*$/i.test(merTrim);
+
+	if (!sqlTrim || merIsEmpty) {
 	  sqlOut.value =
-	    "-- Backend returned empty output.\n" +
-	    "-- Check DevTools Console for payload/response.\n";
+	    "-- Backend returned empty (or near-empty) output.\n" +
+	    "-- Open DevTools Console to see payload + response.\n" +
+	    `-- sql length: ${sqlTrim.length}, mermaid: "${merTrim.slice(0, 40)}"\n`;
+
 	  mermaidOut.value =
-	    "erDiagram\n  %% Backend returned empty output (see console).";
+	    "erDiagram\n  %% Backend returned empty (or near-empty) output (see console).";
+
 	  return;
 	}
 	
