@@ -865,7 +865,7 @@ function drawAttributeOvalsForEntity(ent) {
 
   // ---- NEW: compute a single "column rx" (max needed among visible attrs)
   const MIN_RX = 40;
-  const CHAR_PX = 3;  // tweak: 6–7 feels about right at 12px font
+  const CHAR_PX = 4;  // tweak: 6–7 feels about right at 12px font
   const rxCol = visible.reduce((mx, { attr: a }) => {
     const base = a.name || "";
     const extra = (!a.pk && a.notNull !== true) ? " (O)" : "";
