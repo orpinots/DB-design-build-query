@@ -719,63 +719,39 @@ function renderEditGrid() {
 }
 
 
-function addEditRow() {
-  const { tableName } = editState;
-  if (!tableName || !editState.columns.length) return;
 
-  // Row number (1-based) for the new row
-  const rowNum = editState.rows.length + 1;
+// --- Validate required fields before coercion/insert ---
+clearCellErrors();
 
-  // Pull types + PK info from SQLite (best available signal)
-  const colsWithTypes = getTableColumnsWithTypes(tableName);
-  const typeByCol = new Map(colsWithTypes.map(x => [x.name, x.type]));
-  const pkByCol   = new Map(colsWithTypes.map(x => [x.name, x.pk])); // ✅ add this line
+const meta = getTableColumnMeta(tableName);
+const colMetaByName = new Map(meta.map(m => [m.name, m]));
+const errors = [];
 
-  const newRow = editState.columns.map(colName => {
-    const colType = typeByCol.get(colName) || '';
-    const isPk = (pkByCol.get(colName) || 0) > 0;                    // ✅ add this line
+rows.forEach((row, rIdx) => {
+  columns.forEach((colName, cIdx) => {
+    const m = colMetaByName.get(colName);
+    if (!m) return;
 
-    // ✅ 3-line exception: if column is PK integer, default to ''
-    if (isPk && isType(colType, ['INT'])) {                          // ✅ add this line
-      return '';
+    // Required if NOT NULL or PK (PK implies required)
+    const required = m.notNull || m.pk;
+
+    if (required && isBlankCell(row[cIdx])) {
+      errors.push({ rIdx, cIdx, colName });
+      markCellError(rIdx, cIdx);
     }
-
-    // Boolean-ish (SQLite has no real boolean, but schemas often say BOOL/BOOLEAN)
-    if (isType(colType, ['BOOL', 'BOOLEAN'])) {
-      return String(randInt(0, 1)); // keep as string for the inputs; coerces later
-    }
-
-    // Integer-ish
-    if (isType(colType, ['INT'])) {
-      return String(randInt(1, 100));
-    }
-
-    // Real/float/decimal/numeric-ish
-    if (isType(colType, ['REAL', 'FLOA', 'DOUB', 'DEC', 'NUM'])) {
-      // small decimal feels nicer than huge integers
-      return String(randInt(1, 100));
-    }
-
-    // Date/Time-ish (very heuristic, but works well in practice)
-    if (isType(colType, ['DATETIME', 'TIMESTAMP'])) {
-      return randomDateTimeLast24Hours();
-    }
-    if (isType(colType, ['DATE'])) {
-      return randomDateLastYear();
-    }
-    if (isType(colType, ['TIME'])) {
-      // simple HH:MM:SS
-      const pad = n => String(n).padStart(2, '0');
-      return `${pad(randInt(0, 23))}:${pad(randInt(0, 59))}:${pad(randInt(0, 59))}`;
-    }
-
-    // Default: text-like placeholder = columnName + row#
-    return `${colName}${rowNum}`;
   });
+});
 
-  editState.rows.push(newRow);
-  renderEditGrid();
+if (errors.length) {
+  statusMessage.className = 'message-box error';
+  statusMessage.textContent =
+    `❌ Cannot apply edits: ${errors.length} required cell(s) are blank. ` +
+    `Fill highlighted cells (NOT NULL / PK) and try again.`;
+  return;
 }
+
+// Convert UI cell strings to typed-ish values:
+const typedRows = rows.map(row => row.map(v => coerceCellValue(v)));
 window.addEditRow = addEditRow;
 
 
