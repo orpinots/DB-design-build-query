@@ -1,5 +1,5 @@
 
-// IMPORTANT: erd-presets.js must be loaded before erd.js
+// IMPORTANT: erd-presets.js must be ed before erd.js
 const ERD_PRESETS = window.ERD_PRESETS || {};
 
 // Small helper to deep-clone our ERD objects
@@ -21,8 +21,45 @@ function findRelationshipById(rid) {
 }
 
 
+// --- CURRENT (in-progress) ERD persistence ---
+const CURRENT_ERD_KEY = "erd_current_v1";
+
+function saveCurrentErdState(erdObj) {
+  try {
+    localStorage.setItem(CURRENT_ERD_KEY, JSON.stringify(erdObj));
+  } catch (e) {
+    console.warn("Could not save current ERD:", e);
+  }
+}
+
+function loadCurrentErdState() {
+  try {
+    const raw = localStorage.getItem(CURRENT_ERD_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.entities) || !Array.isArray(parsed.relationships)) return null;
+    return parsed;
+  } catch (e) {
+    console.warn("Could not load current ERD:", e);
+    return null;
+  }
+}
+
+function clearCurrentErdState() {
+  try {
+    localStorage.removeItem(CURRENT_ERD_KEY);
+  } catch (e) {
+    console.warn("Could not clear current ERD:", e);
+  }
+}
+
+
 // Use the 4-way as the default
-let erd = cloneErd(ERD_PRESETS.fourWay.data);
+// let erd = cloneErd(ERD_PRESETS.fourWay.data);
+
+// Use the 4-way as the default *fallback*, but prefer the last in-progress ERD
+let erd = loadCurrentErdState() || cloneErd(ERD_PRESETS.fourWay.data);
+
 
 const wrap = document.getElementById("canvasWrap");
 const svg  = document.getElementById("svgLayer");
@@ -40,7 +77,7 @@ const SQL_TYPE_OPTIONS = [
 
 let showAttributeOvals = false;
 
-// --- ERD canvas save/load config ---
+// --- ERD canvas save/ config ---
 const ERD_STORAGE_KEY = 'erd_canvas_layouts';
 const MAX_ERD_SAVES   = 10;
 
@@ -364,7 +401,7 @@ function render() {
     viewEntities.forEach(ent => drawAttributeOvalsForEntity(ent));
   }
   // persist current ERD for schema.html and sandbox.html
-  saveCurrentErd(erd);
+  saveCurrentErdState(erd);
 }
 
 function toggleAttrView() {
@@ -1436,6 +1473,21 @@ toggleAssocCheckbox.addEventListener("change", e => {
   render();
 });
 
+// --- Hot ERD Time Machine dropdown restore ---
+const tmSelect = document.getElementById("erdTimeMachineSelect");
+
+if (tmSelect) {
+  tmSelect.addEventListener("change", () => {
+    const ts = tmSelect.value;
+    if (!ts) return;
+
+    restoreSnapshotByTs(ts);
+    tmSelect.value = ""; // reset after restore
+  });
+}
+
+// Populate dropdown once on startup
+refreshTimeMachineDropdown();
 
 //  ---------- Entity modal ---------- */
 function openEntityModal(ent) {
@@ -2407,9 +2459,9 @@ function duplicateEntity(sourceId) {
 }
 
 //  =========================
-//    Load ERD Canvas from MERMAID script
+//     ERD Canvas from MERMAID script
 //  ========================= */
-async function loadMermaidToErd() {
+async function MermaidToErd() {
   const raw = document.getElementById("mermaidOut").value.trim();
   if (!raw) {
     alert("Paste Mermaid code first.");
@@ -2442,7 +2494,7 @@ async function loadMermaidToErd() {
       "-- You may now edit the diagram or rebuild the schema.";
   } catch (err) {
     document.getElementById("sqlOut").value =
-      "-- ERROR loading Mermaid remotely: " + err.message;
+      "-- ERROR ing Mermaid remotely: " + err.message;
     document.getElementById("mermaidOut").value =
       raw + "\n\n%% ERROR: " + err.message;
   }
@@ -2484,7 +2536,28 @@ async function buildSchema() {
   }
 }
 
-// ------- Save / Load ERD layouts (canvas) -------
+// ------- Save /  ERD layouts (canvas) -------
+
+// Align to the next 5-minute boundary for “nice” times
+function msUntilNext5Min() {
+  const now = new Date();
+  const mins = now.getMinutes();
+  const next = Math.ceil((mins + 0.001) / SNAPSHOT_INTERVAL_MIN) * SNAPSHOT_INTERVAL_MIN;
+  const nextTime = new Date(now);
+  nextTime.setMinutes(next, 0, 0);
+  return nextTime - now;
+}
+
+setTimeout(() => {
+  // take one snapshot immediately at the boundary
+  pushSnapshot(erd);
+
+  // then repeat every 5 minutes
+  setInterval(() => pushSnapshot(erd), SNAPSHOT_INTERVAL_MIN * 60 * 1000);
+}, msUntilNext5Min());
+
+
+
 
 function refreshSavedErdList() {
   const sel = document.getElementById("savedErdSelect");
@@ -2532,7 +2605,7 @@ function saveErdLayout() {
   alert(`ERD layout "${name}" saved.`);
 }
 
-function loadErdLayout(value) {
+function ErdLayout(value) {
   if (value === "") return;
 
   const idx = parseInt(value, 10);
@@ -2541,7 +2614,7 @@ function loadErdLayout(value) {
   const saved = JSON.parse(localStorage.getItem(ERD_STORAGE_KEY) || "[]");
   const item = saved[idx];
   if (!item || !item.data) {
-    alert("Could not load that ERD layout.");
+    alert("Could not  that ERD layout.");
     return;
   }
 
@@ -2609,7 +2682,7 @@ function switchErdPreset(key) {
     "erDiagram\n  %% Click 'Build Schema from ERD' to regenerate ERD text.";
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContented", () => {
   const sel = document.getElementById("erdPresetSelect");
   if (sel) sel.value = "fourWay";
 
@@ -2695,7 +2768,7 @@ function openMermaidPreview() {
       <div class="mermaid">
 ${escaped}
       </div>
-      <script>mermaid.initialize({startOnLoad:true});<\/script>
+      <script>mermaid.initialize({startOn:true});<\/script>
     </body>
     </html>
   `);

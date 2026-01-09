@@ -48,10 +48,25 @@
 
   <button onclick="saveErdLayout()">💾 Save ERD</button>
   <button onclick="deleteErdLayout()">🗑️ Delete ERD</button>
+  <button onclick="exportErd()">⬇️ Export ERD</button>
+  <button onclick="importErd()">⬆️ Import ERD</button>
+
+  <input type="file"
+         id="erdFileInput"
+         accept=".json"
+         style="display:none"
+         onchange="handleErdFile(this.files)">
+  
   <label style="font-size:14px;">
     Load ERD:
     <select id="savedErdSelect" onchange="loadErdLayout(this.value)">
       <option value="">-- Select Saved ERD --</option>
+    </select>
+  </label>
+  <label style="margin-left:16px; font-size:14px;">
+    Hot ERD Time Machine:
+    <select id="erdTimeMachineSelect">
+      <option value="">(no snapshots yet)</option>
     </select>
   </label>
 </div>
