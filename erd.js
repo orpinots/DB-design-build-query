@@ -2797,7 +2797,8 @@ function switchErdPreset(key) {
     "erDiagram\n  %% Click 'Build Schema from ERD' to regenerate ERD text.";
 }
 
-window.addEventListener("DOMContented", () => {
+
+window.addEventListener("DOMContentLoaded", () => {
   const sel = document.getElementById("erdPresetSelect");
   if (sel) sel.value = "fourWay";
 
