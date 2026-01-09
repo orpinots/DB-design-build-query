@@ -19,7 +19,7 @@ function cloneErd(obj) {
 
 
 
-// --- Hot ERD Time Machine (5-min snapshots, last 60 min) ---
+// --- Hot ERD Time Machine (storage helpers only) ---
 const SNAPSHOT_KEY = "erd_snapshots_v1";
 const SNAPSHOT_INTERVAL_MIN = 5;
 const SNAPSHOT_MAX = 12; // 12 * 5min = 60 minutes
@@ -40,80 +40,6 @@ function saveSnapshots(arr) {
   }
 }
 
-// Save a snapshot of the current ERD with timestamp
-function pushSnapshot(erdObj) {
-  const now = Date.now();
-  const snapshots = loadSnapshots();
-
-  // avoid duplicates if called twice quickly
-  const last = snapshots[snapshots.length - 1];
-  if (last && (now - last.ts) < 30_000) return; // 30s guard
-
-  snapshots.push({
-    ts: now,
-    erd: cloneErd(erdObj)
-  });
-
-  // keep only the latest SNAPSHOT_MAX
-  while (snapshots.length > SNAPSHOT_MAX) snapshots.shift();
-
-  saveSnapshots(snapshots);
-  refreshTimeMachineDropdown();
-}
-
-function refreshTimeMachineDropdown() {
-  const sel = document.getElementById("erdTimeMachineSelect");
-  if (!sel) return;
-
-  const snapshots = loadSnapshots();
-  sel.innerHTML = "";
-
-  if (!snapshots.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "(no snapshots yet)";
-    sel.appendChild(opt);
-    return;
-  }
-
-  // newest first in the dropdown
-  const now = Date.now();
-  const newestFirst = [...snapshots].reverse();
-
-  const opt0 = document.createElement("option");
-  opt0.value = "";
-  opt0.textContent = "Select a restore point…";
-  sel.appendChild(opt0);
-
-  newestFirst.forEach((s, idx) => {
-    const minutesAgo = Math.round((now - s.ts) / 60000);
-    const opt = document.createElement("option");
-    // store index in ORIGINAL array: easiest is store timestamp as identifier
-    opt.value = String(s.ts);
-	if (mins === 0) {
-	  opt.textContent = "Just now (autosave)";
-	} else {
-	  opt.textContent = `-${mins} min (autosave)`;
-	}
-    sel.appendChild(opt);
-  });
-}
-
-function restoreSnapshotByTs(tsStr) {
-  const ts = Number(tsStr);
-  if (!ts) return;
-
-  const snapshots = loadSnapshots();
-  const snap = snapshots.find(s => s.ts === ts);
-  if (!snap) return;
-
-  // Restore
-  erd = cloneErd(snap.erd);
-
-  // Persist current state so page switches keep it
-  saveCurrentErdState(erd);
-  render();
-}
 
 function exportErd() {
   const dataStr = JSON.stringify(erd, null, 2);

@@ -1500,6 +1500,94 @@ toggleAssocCheckbox.addEventListener("change", e => {
   render();
 });
 
+
+// --- Hot ERD Time Machine (runs ONLY on ERD Builder page) ---
+
+function pushSnapshot(erdObj) {
+  const now = Date.now();
+  const snapshots = loadSnapshots();
+
+  // avoid duplicates if called twice quickly
+  const last = snapshots[snapshots.length - 1];
+  if (last && (now - last.ts) < 30_000) return; // 30s guard
+
+  snapshots.push({
+    ts: now,
+    erd: cloneErd(erdObj)
+  });
+
+  while (snapshots.length > SNAPSHOT_MAX) snapshots.shift();
+
+  saveSnapshots(snapshots);
+  refreshTimeMachineDropdown();
+}
+
+function refreshTimeMachineDropdown() {
+  const sel = document.getElementById("erdTimeMachineSelect");
+  if (!sel) return;
+
+  const snapshots = loadSnapshots();
+  sel.innerHTML = "";
+
+  const opt0 = document.createElement("option");
+  opt0.value = "";
+  opt0.textContent = snapshots.length ? "Select a restore point…" : "(no snapshots yet)";
+  sel.appendChild(opt0);
+
+  if (!snapshots.length) return;
+
+  const now = Date.now();
+  const newestFirst = [...snapshots].reverse();
+
+  newestFirst.forEach(s => {
+    const mins = Math.round((now - s.ts) / 60000); // ✅ FIX: mins is defined
+    const opt = document.createElement("option");
+    opt.value = String(s.ts);
+    opt.textContent = mins === 0 ? "-0 min (autosave)" : `-${mins} min (autosave)`;
+    sel.appendChild(opt);
+  });
+}
+
+function restoreSnapshotByTs(tsStr) {
+  const ts = Number(tsStr);
+  if (!ts) return;
+
+  const snapshots = loadSnapshots();
+  const snap = snapshots.find(s => s.ts === ts);
+  if (!snap) return;
+
+  erd = cloneErd(snap.erd);
+
+  // Persist current state so page switches keep it
+  saveCurrentErdState(erd);
+
+  render();
+}
+
+function wireTimeMachineDropdown() {
+  const sel = document.getElementById("erdTimeMachineSelect");
+  if (!sel) return;
+
+  sel.addEventListener("change", () => {
+    const val = sel.value;
+    if (!val) return;
+    restoreSnapshotByTs(val);
+    sel.value = ""; // reset
+  });
+}
+
+function startErdAutosave() {
+  // optional: take one immediately so dropdown shows something right away
+  pushSnapshot(erd);
+
+  setInterval(() => {
+    pushSnapshot(erd);
+  }, SNAPSHOT_INTERVAL_MIN * 60 * 1000);
+}
+
+
+
+
 // --- Hot ERD Time Machine dropdown restore ---
 const tmSelect = document.getElementById("erdTimeMachineSelect");
 
