@@ -89,7 +89,9 @@ async function initDb() {
 
     const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
     db = new SQL.Database();
-
+	const fkOn = document.getElementById('toggle-fk')?.checked;
+	db.run(`PRAGMA foreign_keys = ${fkOn ? 'ON' : 'OFF'};`);
+	
     const schemaScript = dbScriptInput.value.trim();
     if (!schemaScript) throw new Error("Schema script cannot be empty.");
 
@@ -728,23 +730,23 @@ function addEditRow() {
   const colsWithTypes = getTableColumnsWithTypes(tableName);
   const typeByCol = new Map(colsWithTypes.map(x => [x.name, x.type]));
   const pkByCol   = new Map(colsWithTypes.map(x => [x.name, x.pk]));
-
-  // ✅ Precompute "next integer id" for INT PK columns (max + 1)
+  // --- Precompute "next integer id" seeds for INT PK columns ---
   const nextIntPk = new Map(); // colName -> nextValue
+
   editState.columns.forEach(colName => {
     const colType = typeByCol.get(colName) || '';
     const isPk = (pkByCol.get(colName) || 0) > 0;
 
     if (isPk && isType(colType, ['INT'])) {
-      const colIdx = editState.columns.indexOf(colName);
+      // find max existing numeric value in this PK column (from current edit grid)
       let maxVal = 0;
-
       for (const r of editState.rows) {
-        const v = (colIdx >= 0) ? r[colIdx] : null;
+        const idx = editState.columns.indexOf(colName);
+        if (idx < 0) continue;
+        const v = r[idx];
         const n = Number(v);
         if (Number.isFinite(n) && n > maxVal) maxVal = n;
       }
-
       nextIntPk.set(colName, maxVal + 1);
     }
   });
@@ -753,10 +755,14 @@ function addEditRow() {
     const colType = typeByCol.get(colName) || '';
     const isPk = (pkByCol.get(colName) || 0) > 0;
 
-    // ✅ NEW behavior: if column is INT PK, auto-fill sequentially
+    // ✅ exception: if column is PK integer, default to '' (so user must choose)
+    // if (isPk && isType(colType, ['INT'])) {
+    //  return '';
+    //}
+    // If PK is integer-ish, auto-fill with next available id
     if (isPk && isType(colType, ['INT'])) {
-      const next = nextIntPk.get(colName) || rowNum; // fallback
-      nextIntPk.set(colName, next + 1);
+      const next = nextIntPk.get(colName) || rowNum;  // fallback
+      nextIntPk.set(colName, next + 1);               // increment seed
       return String(next);
     }
 
@@ -795,6 +801,111 @@ function addEditRow() {
   renderEditGrid();
 }
 window.addEditRow = addEditRow;
+
+
+function deleteEditRow(rIdx) {
+  if (rIdx < 0 || rIdx >= editState.rows.length) return;
+  editState.rows.splice(rIdx, 1);
+  renderEditGrid();
+}
+window.deleteEditRow = deleteEditRow;
+
+/**
+ * Apply editor state to live DB (simple strategy):
+ * - DELETE all rows from table
+ * - INSERT all editor rows back
+ * Then refresh the CREATE/INSERT textarea by exporting inserts in CREATE order.
+ */
+function applyEditsAndUpdateSchemaSql() {
+  if (!db) return;
+  const { tableName, columns, rows } = editState;
+  if (!tableName) return;
+
+  // Pull latest input values from DOM (in case a browser didn't fire input events)
+  const inputs = editGridWrap.querySelectorAll('input.cell-input');
+  inputs.forEach(inp => {
+    const r = Number(inp.dataset.r);
+    const c = Number(inp.dataset.c);
+    if (!Number.isNaN(r) && !Number.isNaN(c) && editState.rows[r]) {
+      editState.rows[r][c] = inp.value;
+    }
+  });
+
+  // ✅ NEW: Validate required fields BEFORE coercion/insert
+  clearCellErrors();
+  const meta = getTableColumnMeta(tableName);
+  const colMetaByName = new Map(meta.map(m => [m.name, m]));
+  const errors = [];
+
+  rows.forEach((row, rIdx) => {
+    columns.forEach((colName, cIdx) => {
+      const m = colMetaByName.get(colName);
+      if (!m) return;
+
+      // Required if NOT NULL or PK (PK implies required)
+      const required = m.notNull || m.pk;
+
+      if (required && isBlankCell(row[cIdx])) {
+        errors.push({ rIdx, cIdx, colName });
+        markCellError(rIdx, cIdx);
+      }
+    });
+  });
+
+  if (errors.length) {
+    statusMessage.className = 'message-box error';
+    statusMessage.textContent =
+      `❌ Cannot apply edits: ${errors.length} required cell(s) are blank. ` +
+      `Fill highlighted cells (NOT NULL / PK) and try again.`;
+    return;
+  }
+
+  // Convert UI cell strings to typed-ish values:
+  const typedRows = rows.map(row => row.map(v => coerceCellValue(v)));
+
+  try {
+    // Use a transaction
+    db.run('BEGIN;');
+    db.run(`DELETE FROM ${tableName};`);
+
+    if (typedRows.length) {
+      const placeholders = columns.map(() => '?').join(', ');
+      const stmt = db.prepare(
+        `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders});`
+      );
+
+      typedRows.forEach(r => stmt.run(r));
+      stmt.free();
+    }
+
+    db.run('COMMIT;');
+
+    refreshDbScriptTextareaFromLiveDb();
+    populateTableList();
+    generateERD();
+
+    queryInput.value = `SELECT * FROM ${tableName};`;
+    executeQuery();
+
+    statusMessage.className = 'message-box success';
+    statusMessage.textContent = `✅ Updated table "${tableName}" and regenerated INSERT statements.`;
+
+    closeEditPanel();
+  } catch (err) {
+    try { db.run('ROLLBACK;'); } catch (_) {}
+
+    statusMessage.className = 'message-box error';
+    statusMessage.textContent = `❌ Failed to apply edits: ${err.message}`;
+
+    // ✅ NEW (3-line upgrade)
+    alert(
+      `Update failed:\n\n${err.message}\n\n(See console for details.)`
+    );
+
+    console.error(err);
+  }
+}
+
 
 function showEditTableData() {
   const tableName = tableListSelect.value;
