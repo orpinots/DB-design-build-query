@@ -23,6 +23,8 @@ const resultsTableDiv = document.getElementById('results-table');
 const showErdButton = document.getElementById('show-erd-button');
 const showResultsButton = document.getElementById('show-results-button');
 
+const LAST_DB_SQL_KEY = "sql_sandbox_last_db_sql";
+
 // --- Edit panel DOM ---
 const editPanel = document.getElementById('edit-panel');
 const editGridWrap = document.getElementById('edit-grid-wrap');
@@ -93,7 +95,8 @@ async function initDb() {
 	db.run(`PRAGMA foreign_keys = ${fkOn ? 'ON' : 'OFF'};`);
 	
     const schemaScript = dbScriptInput.value.trim();
-    if (!schemaScript) throw new Error("Schema script cannot be empty.");
+    if (!schemaScript) throw new Error("Schema script cannot be empty.");	
+	localStorage.setItem(LAST_DB_SQL_KEY, dbScriptInput.value.trim());
 
     const { ddl } = splitDdlAndData(schemaScript);
     const reorderedDdl = reorderDdlByForeignKeys(ddl);
@@ -881,6 +884,7 @@ function applyEditsAndUpdateSchemaSql() {
     db.run('COMMIT;');
 
     refreshDbScriptTextareaFromLiveDb();
+	localStorage.setItem(LAST_DB_SQL_KEY, dbScriptInput.value.trim());
     populateTableList();
     generateERD();
 
