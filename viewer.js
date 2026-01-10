@@ -1,5 +1,6 @@
 let db = null;
-const LAST_DB_SQL_KEY = "sql_sandbox_last_db_sql";
+
+const sqlText = (loadGeneratedSql() || "").trim();
 
 const statusDiv = document.getElementById("viewer-status");
 const tableSelect = document.getElementById("viewer-table-list");
