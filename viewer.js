@@ -25,7 +25,7 @@ function renderTable(columns, rows) {
 }
 
 async function initViewerDb() {
-  const sqlText = (localStorage.getItem(LAST_DB_SQL_KEY) || "").trim();
+  const sqlText = (loadGeneratedSql() || "").trim();
   if (!sqlText) {
     setStatus("No database found yet. Go to SQL Sandbox and click “Run Schema”.", true);
     return;
