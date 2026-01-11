@@ -141,6 +141,101 @@ function zoomAtScreenPoint(newScale, sx, sy) {
 }
 
 
+
+// =========================
+// Two-finger pan + pinch zoom (canvasWrap)
+// =========================
+const activePtrs = new Map(); // pointerId -> {sx, sy}
+let gestureMode = null;       // null | "panzoom"
+let startDist = 0;
+let startScale = 1;
+let startPanX = 0;
+let startPanY = 0;
+let startMid = { x: 0, y: 0 };
+
+function dist(a, b) {
+  const dx = a.sx - b.sx;
+  const dy = a.sy - b.sy;
+  return Math.hypot(dx, dy);
+}
+function midpoint(a, b) {
+  return { x: (a.sx + b.sx) / 2, y: (a.sy + b.sy) / 2 };
+}
+function updatePtrFromEvent(ev) {
+  const rect = wrap.getBoundingClientRect();
+  activePtrs.set(ev.pointerId, {
+    sx: ev.clientX - rect.left,
+    sy: ev.clientY - rect.top
+  });
+}
+
+function onWrapPointerDown(ev) {
+  // only touch/pen for gestures; mouse wheel can be separate later
+  if (ev.pointerType === "mouse") return;
+
+  // allow entities to handle 1-finger drags; we only engage at 2 pointers
+  updatePtrFromEvent(ev);
+  activePtrs.set(ev.pointerId, activePtrs.get(ev.pointerId));
+  try { wrap.setPointerCapture(ev.pointerId); } catch {}
+
+  if (activePtrs.size === 2) {
+    ev.preventDefault(); // key
+    gestureMode = "panzoom";
+
+    const pts = [...activePtrs.values()];
+    startDist = dist(pts[0], pts[1]);
+    startScale = viewScale;
+    startPanX = viewPanX;
+    startPanY = viewPanY;
+    startMid = midpoint(pts[0], pts[1]);
+  }
+}
+
+function onWrapPointerMove(ev) {
+  if (!activePtrs.has(ev.pointerId)) return;
+  updatePtrFromEvent(ev);
+
+  if (gestureMode === "panzoom" && activePtrs.size >= 2) {
+    ev.preventDefault();
+
+    const pts = [...activePtrs.values()];
+    const mid = midpoint(pts[0], pts[1]);
+    const d = dist(pts[0], pts[1]) || 1;
+
+    // pinch -> scale
+    const rawScale = startScale * (d / startDist);
+    const newScale = clamp(rawScale, MIN_SCALE, MAX_SCALE);
+
+    // keep the world point under the starting midpoint pinned under the current midpoint
+    const worldUnderStartMid = screenToWorld(startMid.x, startMid.y);
+
+    viewScale = newScale;
+    viewPanX = mid.x - worldUnderStartMid.x * viewScale;
+    viewPanY = mid.y - worldUnderStartMid.y * viewScale;
+
+    // plus allow 2-finger translation drift (already included by moving mid)
+    applyViewTransform();
+  }
+}
+
+function onWrapPointerUp(ev) {
+  if (activePtrs.has(ev.pointerId)) activePtrs.delete(ev.pointerId);
+  try { wrap.releasePointerCapture(ev.pointerId); } catch {}
+
+  if (activePtrs.size < 2) {
+    gestureMode = null;
+  }
+}
+
+// IMPORTANT: capture:true so it still runs even if entity drag stops propagation
+wrap.addEventListener("pointerdown", onWrapPointerDown, { passive: false, capture: true });
+wrap.addEventListener("pointermove", onWrapPointerMove, { passive: false, capture: true });
+wrap.addEventListener("pointerup", onWrapPointerUp, { capture: true });
+wrap.addEventListener("pointercancel", onWrapPointerUp, { capture: true });
+
+
+
+
 // =========================
 // Pointer / Touch utilities
 // =========================
