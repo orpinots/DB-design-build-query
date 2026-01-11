@@ -557,3 +557,5 @@ button, select, input, textarea {
   }
 }
 
+#canvasWrap { touch-action: none; }
+.entity, .rel-hit, .attr-hit { touch-action: none; }

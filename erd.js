@@ -65,6 +65,47 @@ const wrap = document.getElementById("canvasWrap");
 const svg  = document.getElementById("svgLayer");
 const svgNS = "http://www.w3.org/2000/svg";
 
+
+// =========================
+// Pointer / Touch utilities
+// =========================
+function clientPointFromEvent(ev) {
+  // PointerEvent / MouseEvent
+  if (ev && typeof ev.clientX === "number") {
+    return { clientX: ev.clientX, clientY: ev.clientY };
+  }
+  // TouchEvent fallback (rare if pointer events are supported)
+  const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
+  if (t) return { clientX: t.clientX, clientY: t.clientY };
+  return { clientX: 0, clientY: 0 };
+}
+
+function localPointInWrapFromClient(clientX, clientY) {
+  const rect = wrap.getBoundingClientRect();
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top
+  };
+}
+
+function pagePointFromClient(clientX, clientY) {
+  // For positioning context menus (absolute on page)
+  return {
+    x: clientX + window.scrollX,
+    y: clientY + window.scrollY
+  };
+}
+
+// Prevent iOS "double-tap to zoom" / pan conflicts while dragging
+function setTouchActionNone(el) {
+  // pointer events honor touch-action; makes dragging reliable on tablets
+  el.style.touchAction = "none";
+}
+
+
+
+
+
 const SQL_TYPE_OPTIONS = [
   "INTEGER",
   "REAL",
@@ -1128,28 +1169,77 @@ function drawOuterOneBar(x, y, towardX, towardY) {
 
 
 //  /* ---------- Drag entities ---------- */
-function enableDrag(el){
-  let ox,oy;
-  el.onmousedown = e => {
-    if (e.button !== 0) return;
-    ox=e.offsetX; oy=e.offsetY;
-    document.onmousemove = m => {
-      el.style.left = (m.pageX - wrap.offsetLeft - ox) + "px";
-      el.style.top  = (m.pageY - wrap.offsetTop  - oy) + "px";
-      const ent = erd.entities.find(e=>e.id===el.dataset.id);
-      ent.x = parseInt(el.style.left,10);
-      ent.y = parseInt(el.style.top,10);
+//  /* ---------- Drag entities (mouse + touch) ---------- */
+function enableDrag(el) {
+  setTouchActionNone(el);
+
+  el.onpointerdown = (e) => {
+    // Left mouse only; touch/pen allowed
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // hide menus if any
+    ctxMenu.style.display = "none";
+    relCtxMenu.style.display = "none";
+
+    const ent = erd.entities.find(en => en.id === el.dataset.id);
+    if (!ent) return;
+
+    // record starting positions
+    const start = clientPointFromEvent(e);
+    const startLocal = localPointInWrapFromClient(start.clientX, start.clientY);
+
+    // pointer position relative to element top-left
+    const elLeft = parseFloat(el.style.left || "0");
+    const elTop  = parseFloat(el.style.top  || "0");
+    const offsetX = startLocal.x - elLeft;
+    const offsetY = startLocal.y - elTop;
+
+    // capture pointer so dragging keeps working if finger leaves element
+    try { el.setPointerCapture(e.pointerId); } catch {}
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+
+      const p = clientPointFromEvent(ev);
+      const loc = localPointInWrapFromClient(p.clientX, p.clientY);
+
+      const newLeft = loc.x - offsetX;
+      const newTop  = loc.y - offsetY;
+
+      el.style.left = newLeft + "px";
+      el.style.top  = newTop + "px";
+
+      ent.x = Math.round(newLeft);
+      ent.y = Math.round(newTop);
+
       render();
     };
-    document.onmouseup = () => { document.onmousemove=null; };
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+    };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 
 function enableRelDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    // left button only; let right-click still show context menu
-    if (e.button !== 0) return;
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -1157,53 +1247,54 @@ function enableRelDrag(hitEl) {
     const rel = findRelationshipById(rid);
     if (!rel) return;
 
-    const rect = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    ctxMenu.style.display = "none";
+    relCtxMenu.style.display = "none";
 
-    // current/default diamond position
+    const start = clientPointFromEvent(e);
+    const startLocal = localPointInWrapFromClient(start.clientX, start.clientY);
+
     const a = erd.entities.find(en => en.id === rel.a);
     const b = erd.entities.find(en => en.id === rel.b);
     if (!a || !b) return;
 
-    const aHalfW = (a.width  || 140) / 2;
-    const aHalfH = (a.height ||  60) / 2;
-    const bHalfW = (b.width  || 140) / 2;
-    const bHalfH = (b.height ||  60) / 2;
+    const aHalfW = (a.width || 140) / 2;
+    const aHalfH = (a.height || 60) / 2;
+    const bHalfW = (b.width || 140) / 2;
+    const bHalfH = (b.height || 60) / 2;
 
     const axCenter = a.x + aHalfW;
     const ayCenter = a.y + aHalfH;
     const bxCenter = b.x + bHalfW;
     const byCenter = b.y + bHalfH;
 
-    const pos = getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter);
+    const pos = getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter, a.y);
     const startRelX = pos.x;
     const startRelY = pos.y;
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
 
-      const newX = startRelX + (currX - startMouseX);
-      const newY = startRelY + (currY - startMouseY);
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
 
-      // Update the relationship object we’re currently drawing from
+      const p = clientPointFromEvent(ev);
+      const currLocal = localPointInWrapFromClient(p.clientX, p.clientY);
+
+      const newX = startRelX + (currLocal.x - startLocal.x);
+      const newY = startRelY + (currLocal.y - startLocal.y);
+
       rel.x = newX;
       rel.y = newY;
 
-      // 🔹 If this is a synthetic "assocView_*" relationship,
-      //    also persist its position on the underlying associative entity
+      // persist synthetic assocView_* relationship position back onto source entity
       if (rel.synthetic && rel.assocEntityId) {
         const src = erd.entities.find(en => en.id === rel.assocEntityId);
         if (src) {
-          // Remember diamond center for when we rebuild synthetic rels
           src.assocRelX = newX;
           src.assocRelY = newY;
 
-          // 🔹 NEW: move the *entity* so that when we toggle back,
-          //         the associative entity appears where this diamond is now.
-          const w = src.width  || 140;
-          const h = src.height ||  60;
+          const w = src.width || 140;
+          const h = src.height || 60;
           src.x = newX - w / 2;
           src.y = newY - h / 2;
         }
@@ -1212,15 +1303,26 @@ function enableRelDrag(hitEl) {
       render();
     };
 
-    document.onmouseup = () => {
-      document.onmousemove = null;
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 function enableEntityAttrDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    if (e.button !== 0) return;          // left button only
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -1228,65 +1330,83 @@ function enableEntityAttrDrag(hitEl) {
     const idx   = parseInt(hitEl.dataset.attrIndex, 10);
     const ent   = erd.entities.find(en => en.id === entId);
     if (!ent || !ent.attributes[idx]) return;
-    const attr  = ent.attributes[idx];
+    const attr = ent.attributes[idx];
 
-    const rect = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    const start = clientPointFromEvent(e);
+    const startLocal = localPointInWrapFromClient(start.clientX, start.clientY);
 
     const startX = parseFloat(hitEl.dataset.ovalX);
     const startY = parseFloat(hitEl.dataset.ovalY);
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
-      attr.ovalX = startX + (currX - startMouseX);
-      attr.ovalY = startY + (currY - startMouseY);
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+
+      const p = clientPointFromEvent(ev);
+      const currLocal = localPointInWrapFromClient(p.clientX, p.clientY);
+
+      attr.ovalX = startX + (currLocal.x - startLocal.x);
+      attr.ovalY = startY + (currLocal.y - startLocal.y);
+
       render();
     };
-    document.onmouseup = () => {
-      document.onmousemove = null;
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 function enableRelAttrDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    if (e.button !== 0) return;
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
     const relId = hitEl.dataset.relId;
     const idx   = parseInt(hitEl.dataset.attrIndex, 10);
 
-    // IMPORTANT: look in the *view* relationships first
     const relList = erd._viewRelationships || erd.relationships || [];
-    const rel     = relList.find(r => r.id === relId);
-
+    const rel = relList.find(r => r.id === relId);
     if (!rel || !rel.attributes || !rel.attributes[idx]) return;
+
     const attr = rel.attributes[idx];
 
-    const rect        = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    const start = clientPointFromEvent(e);
+    const startLocal = localPointInWrapFromClient(start.clientX, start.clientY);
 
     const startX = parseFloat(hitEl.dataset.ovalX);
     const startY = parseFloat(hitEl.dataset.ovalY);
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
 
-      const newX = startX + (currX - startMouseX);
-      const newY = startY + (currY - startMouseY);
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
 
-      // move the *view* attribute
+      const p = clientPointFromEvent(ev);
+      const currLocal = localPointInWrapFromClient(p.clientX, p.clientY);
+
+      const newX = startX + (currLocal.x - startLocal.x);
+      const newY = startY + (currLocal.y - startLocal.y);
+
       attr.ovalX = newX;
       attr.ovalY = newY;
 
-      // If this relationship came from collapsing an associative entity,
-      // also persist coordinates back to the source entity attribute so
-      // we don't lose them when buildViewRelationships() rebuilds.
+      // persist back onto assoc source entity attribute (so rebuild keeps coords)
       if (rel.fromAssocCollapse && attr._assocEntityId != null) {
         const assoc = erd.entities.find(e => e.id === attr._assocEntityId);
         if (assoc && Array.isArray(assoc.attributes)) {
@@ -1301,51 +1421,153 @@ function enableRelAttrDrag(hitEl) {
       render();
     };
 
-    document.onmouseup = () => {
-      document.onmousemove = null;
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 
 //  ---------- Context menus ---------- */
-function enableContext(el){
+function enableContext(el) {
+  // Desktop right-click still works
   el.oncontextmenu = e => {
     e.preventDefault();
     ctxEntityId = el.dataset.id;
     showCtxMenu(e.pageX, e.pageY);
   };
+
+  // Double click (mouse) still works
   el.ondblclick = e => {
     e.preventDefault();
     const ent = erd.entities.find(en => en.id === el.dataset.id);
     if (ent) openEntityModal(ent);
   };
+
+  // Touch long-press for context menu
+  let pressTimer = null;
+  let startClient = null;
+  let moved = false;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    moved = false;
+    startClient = clientPointFromEvent(e);
+    ctxEntityId = el.dataset.id;
+
+    pressTimer = setTimeout(() => {
+      if (moved) return;
+      const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
+      showCtxMenu(pt.x, pt.y);
+    }, 550);
+  }, { passive: true });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!pressTimer || e.pointerType !== "touch") return;
+
+    const p = clientPointFromEvent(e);
+    const dx = p.clientX - startClient.clientX;
+    const dy = p.clientY - startClient.clientY;
+
+    if (Math.hypot(dx, dy) > 10) { // movement cancels long-press
+      moved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }, { passive: true });
+
+  el.addEventListener("pointerup", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
+
+  el.addEventListener("pointercancel", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
 }
+
 function showCtxMenu(x,y){
   ctxMenu.style.left  = x + "px";
   ctxMenu.style.top   = y + "px";
   ctxMenu.style.display = "block";
 }
 
-function enableRelContext(el){
+function enableRelContext(el) {
   el.oncontextmenu = e => {
     e.preventDefault();
     ctxRelId = el.dataset.rid;
     showRelCtxMenu(e.pageX, e.pageY);
   };
+
   el.ondblclick = e => {
     e.preventDefault();
     const rel = erd.relationships.find(r => r.id === el.dataset.rid);
     if (rel) openRelModal(rel);
   };
+
+  // Touch long-press
+  let pressTimer = null;
+  let startClient = null;
+  let moved = false;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    moved = false;
+    startClient = clientPointFromEvent(e);
+    ctxRelId = el.dataset.rid;
+
+    pressTimer = setTimeout(() => {
+      if (moved) return;
+      const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
+      showRelCtxMenu(pt.x, pt.y);
+    }, 550);
+  }, { passive: true });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!pressTimer || e.pointerType !== "touch") return;
+
+    const p = clientPointFromEvent(e);
+    const dx = p.clientX - startClient.clientX;
+    const dy = p.clientY - startClient.clientY;
+
+    if (Math.hypot(dx, dy) > 10) {
+      moved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }, { passive: true });
+
+  el.addEventListener("pointerup", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
+
+  el.addEventListener("pointercancel", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
 }
+
+
 function showRelCtxMenu(x,y){
   relCtxMenu.style.left  = x + "px";
   relCtxMenu.style.top   = y + "px";
   relCtxMenu.style.display = "block";
 }
 
-document.addEventListener("click", e => {
+
+document.addEventListener("pointerdown", e => {
   if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
   if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
 });
