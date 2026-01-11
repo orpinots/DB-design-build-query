@@ -125,6 +125,18 @@ textarea {
   background: transparent;
 }
 
+/* Pan/zoom gestures should be handled by JS, not browser scrolling */
+#canvasWrap {
+  touch-action: none;
+}
+
+/* Stage that gets transformed */
+#erdStage {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
 
 /* ---------- Context menus (refined) ---------- */
 #ctxMenu,
