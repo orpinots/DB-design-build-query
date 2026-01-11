@@ -404,11 +404,15 @@ document.addEventListener("click", e => {
     ctxMenu.contains(e.target);
 
   if (!inEntityMenu) {
+	hardHideMenu(ctxMenu);  
     ctxMenu.style.display = "none";
     resetCtxSubmenus();
   }
-
-  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
+  
+  if (!relCtxMenu.contains(e.target)) {
+    hardHideMenu(relCtxMenu);
+	relCtxMenu.style.display = "none";
+  }
 });
 
 
@@ -1806,13 +1810,22 @@ function createRelationshipAndEdit(sourceId, targetId, card) {
   ctxMenu.style.display = "none";
   resetCtxSubmenus();
 
+  // close menus HARD (prevents iOS ghost boxes)
+  hardHideMenu(ctxMenu);
+  resetCtxSubmenus();
+
   render();
 
+  // (optional but often helps) delay modal 1 frame so repaint completes
+  requestAnimationFrame(() => openRelModal(rel));
+
   // open the relationship editor immediately
-  openRelModal(rel);
+  // openRelModal(rel);
 }
 
 function openEntityCtxMenuAtPageXY(pageX, pageY) {
+  hardHideMenu(ctxMenu);
+  hardHideMenu(relCtxMenu);
   ctxMenu.style.display = "none";
   relCtxMenu.style.display = "none";
   resetCtxSubmenus();
@@ -1824,6 +1837,29 @@ function openEntityCtxMenuAtPageXY(pageX, pageY) {
   populateRelTargetSubmenu(ctxEntityId);
   showCtxMenu(pageX, pageY);
 }
+
+function hardHideMenu(el) {
+  if (!el) return;
+  el.style.display = "none";
+  el.style.visibility = "hidden";
+  el.style.opacity = "0";
+  el.style.left = "-9999px";
+  el.style.top  = "-9999px";
+
+  // iOS repaint nudge
+  void el.offsetHeight;
+}
+
+function showMenu(el, x, y) {
+  if (!el) return;
+  el.style.left = x + "px";
+  el.style.top  = y + "px";
+  el.style.display = "block";
+  el.style.visibility = "visible";
+  el.style.opacity = "1";
+}
+
+
 
 function enableRelContext(el) {
   el.oncontextmenu = e => {
