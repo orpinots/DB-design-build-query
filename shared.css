@@ -465,6 +465,85 @@ th, td {
 }
 
 
+/* ==========================================
+   Cascading context menu (Add Relationship)
+   ========================================== */
+
+/* Wrapper for a menu row that owns submenus */
+#ctxMenu .menu-item {
+  position: relative;
+}
+
+/* The row’s visible button */
+#ctxMenu .submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Little arrow on the right */
+#ctxMenu .submenu-trigger .arrow {
+  opacity: 0.65;
+  font-size: 12px;
+}
+
+/* Submenu panel (hidden by default) */
+#ctxMenu .submenu {
+  position: absolute;
+  top: 0;
+
+  /* ✅ KEY FIX: remove the hover-gap */
+  left: 100%;            /* was: calc(100% + 6px) */
+  margin-left: 0;        /* (optional) keep at 0 to avoid any gap */
+
+  display: none;
+
+  min-width: 170px;
+  max-width: 220px;
+
+  background: #f9fbff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
+  z-index: 10000;
+}
+
+/* Show submenu when hovering over the parent row */
+#ctxMenu .has-submenu:hover > .submenu {
+  display: block;
+}
+
+/* Ensure submenu buttons look identical to normal ctx menu buttons */
+#ctxMenu .submenu button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 2px 0;
+  text-align: left;
+  font-size: 13px;
+  color: #222;
+  cursor: pointer;
+}
+
+#ctxMenu .submenu button:hover {
+  background: #e9f1ff;
+  color: #0b3fdc;
+}
+
+/* Optional: disabled submenu items */
+#ctxMenu .submenu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Shift the 2nd submenu (cardinality) slightly to the right */
+#ctxMenu #ctxRelTypeMenu {
+  transform: translateX(60px);
+}
+
 /* =====================================================
    Mobile + Tablet responsiveness (global)
    Paste at END of shared.css

@@ -82,7 +82,20 @@
 <div id="ctxMenu">
   <button data-act="edit">Edit Entity</button>
   <button data-act="attr">Add Attribute</button>
-  <button data-act="rel">Add Relationship</button>
+
+  <!-- Cascading Add Relationship -->
+  <div class="menu-item has-submenu" data-act="relCasc">
+    <button type="button" class="submenu-trigger">
+      Add Relationship <span class="arrow">▸</span>
+    </button>
+
+    <!-- Submenu 1: target entity list -->
+    <div class="submenu" id="ctxRelTargetMenu"></div>
+
+    <!-- Submenu 2: cardinality options -->
+    <div class="submenu" id="ctxRelTypeMenu"></div>
+  </div>
+
   <button data-act="weak">Add Weak Entity</button>
   <button data-act="dup">Duplicate Entity</button>
   <button data-act="del">Delete Entity</button>

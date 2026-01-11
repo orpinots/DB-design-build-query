@@ -399,6 +399,19 @@ let editingRelId = null;
 const relAttrBody = document.getElementById("relAttrBody");
 
 
+document.addEventListener("click", e => {
+  const inEntityMenu =
+    ctxMenu.contains(e.target);
+
+  if (!inEntityMenu) {
+    ctxMenu.style.display = "none";
+    resetCtxSubmenus();
+  }
+
+  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
+});
+
+
 // Heuristic: mark associative entities based on PK/FK pattern
 function autoMarkAssociativeEntities(erdObj) {
   if (!erdObj || !Array.isArray(erdObj.entities)) return;
@@ -1611,16 +1624,17 @@ function enableRelAttrDrag(hitEl) {
 }
 
 //  ---------- Context menus ---------- */
+//  ---------- Context menus ---------- */
 function enableContext(el) {
   // Desktop right-click still works
-  el.oncontextmenu = e => {
+  el.oncontextmenu = (e) => {
     e.preventDefault();
     ctxEntityId = el.dataset.id;
-    showCtxMenu(e.pageX, e.pageY);
+    openEntityCtxMenuAtPageXY(e.pageX, e.pageY);
   };
 
   // Double click (mouse) still works
-  el.ondblclick = e => {
+  el.ondblclick = (e) => {
     e.preventDefault();
     const ent = erd.entities.find(en => en.id === el.dataset.id);
     if (ent) openEntityModal(ent);
@@ -1638,10 +1652,12 @@ function enableContext(el) {
     startClient = clientPointFromEvent(e);
     ctxEntityId = el.dataset.id;
 
+    // Important: don’t open the menu if the user is starting a drag
+    // (your drag code uses touch-action:none and pointer capture, so this is safe)
     pressTimer = setTimeout(() => {
       if (moved) return;
       const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
-      showCtxMenu(pt.x, pt.y);
+      openEntityCtxMenuAtPageXY(pt.x, pt.y);
     }, 550);
   }, { passive: true });
 
@@ -1674,6 +1690,138 @@ function showCtxMenu(x,y){
   ctxMenu.style.left  = x + "px";
   ctxMenu.style.top   = y + "px";
   ctxMenu.style.display = "block";
+}
+
+// --- Cascading context menus for Add Relationship ---
+let relTargetMenu = null;
+let relTypeMenu = null;
+let pendingRelTargetId = null;
+
+
+// --- Cascading Add Relationship (NESTED submenus inside #ctxMenu) ---
+
+function resetCtxSubmenus() {
+  if (relTargetMenu) relTargetMenu.innerHTML = "";
+  if (relTypeMenu) {
+    relTypeMenu.innerHTML = "";
+    relTypeMenu.style.display = "none";
+  }
+  pendingRelTargetId = null;
+}
+
+function positionMenuNextToAnchor(menuEl, anchorRect, offsetX = 6) {
+  // anchorRect is a DOMRect in viewport coords
+  const x = anchorRect.right + offsetX + window.scrollX;
+  const y = anchorRect.top + window.scrollY;
+  menuEl.style.left = `${x}px`;
+  menuEl.style.top  = `${y}px`;
+}
+
+
+
+function populateRelTargetSubmenu(sourceEntityId) {
+  if (!relTargetMenu) return;
+
+  relTargetMenu.innerHTML = "";
+  if (relTypeMenu) relTypeMenu.style.display = "none";
+  pendingRelTargetId = null;
+
+  const others = (erd.entities || []).filter(e => e.id !== sourceEntityId);
+
+  if (!others.length) {
+    relTargetMenu.innerHTML = `
+      <div style="padding:6px 10px; font-size:13px; color:#555;">
+        No other entities available
+      </div>`;
+    return;
+  }
+
+  others.forEach(t => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = t.name;
+    btn.dataset.relTarget = t.id;
+
+    // Hover (desktop): reveal type submenu
+    btn.addEventListener("mouseenter", () => {
+      pendingRelTargetId = t.id;
+      showRelTypeSubmenuForTarget(btn);
+    });
+
+    // Tap/click (mobile): also reveal type submenu
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      pendingRelTargetId = t.id;
+      showRelTypeSubmenuForTarget(btn);
+    });
+
+    relTargetMenu.appendChild(btn);
+  });
+}
+
+function showRelTypeSubmenuForTarget(targetBtnEl) {
+  if (!relTypeMenu) return;
+
+  relTypeMenu.innerHTML = "";
+
+  const choices = ["1:1", "1:N", "N:1", "M:N"];
+  choices.forEach(card => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = card;
+
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!ctxEntityId || !pendingRelTargetId) return;
+      createRelationshipAndEdit(ctxEntityId, pendingRelTargetId, card);
+    });
+
+    relTypeMenu.appendChild(b);
+  });
+
+  // Align submenu 2 vertically with hovered/selected target row
+  // (targetBtnEl is inside relTargetMenu)
+  relTypeMenu.style.top = (targetBtnEl.offsetTop || 0) + "px";
+  relTypeMenu.style.display = "block";
+}
+
+
+
+
+function createRelationshipAndEdit(sourceId, targetId, card) {
+  const id = "r" + Math.random().toString(36).slice(2, 7);
+
+  const rel = {
+    id,
+    name: "has",     // default per your UX goal
+    type: card,      // "1:N", "N:1", etc.
+    a: sourceId,
+    b: targetId
+  };
+
+  erd.relationships.push(rel);
+
+  // close menus
+  ctxMenu.style.display = "none";
+  resetCtxSubmenus();
+
+  render();
+
+  // open the relationship editor immediately
+  openRelModal(rel);
+}
+
+function openEntityCtxMenuAtPageXY(pageX, pageY) {
+  ctxMenu.style.display = "none";
+  relCtxMenu.style.display = "none";
+  resetCtxSubmenus();
+
+  // safety in case DOMContentLoaded timing ever changes
+  relTargetMenu = relTargetMenu || document.getElementById("ctxRelTargetMenu");
+  relTypeMenu   = relTypeMenu   || document.getElementById("ctxRelTypeMenu");
+
+  populateRelTargetSubmenu(ctxEntityId);
+  showCtxMenu(pageX, pageY);
 }
 
 function enableRelContext(el) {
@@ -1747,6 +1895,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
   refreshSavedErdList();   // populate saved ERD dropdown from localStorage
 });
+
+window.addEventListener("DOMContentLoaded", () => {
+  relTargetMenu = document.getElementById("ctxRelTargetMenu");
+  relTypeMenu   = document.getElementById("ctxRelTypeMenu");
+});
+
 
 //  ---------- Draggable modals ---------- */
 function makeModalDraggable(modal) {
@@ -1897,33 +2051,61 @@ document.addEventListener("pointerdown", e => {
 
 
 //  Entity menu actions */
+//  Entity menu actions */
 ctxMenu.addEventListener("click", e => {
+  // If clicking a submenu item, handle that first
+  const targetBtn = e.target.closest("button[data-rel-target]");
+  if (targetBtn) {
+    // user picked a target entity
+    pendingRelTargetId = targetBtn.dataset.relTarget;
+    showRelTypeSubmenuForTarget(targetBtn.getBoundingClientRect());
+    return;
+  }
+
+  const typeBtn = e.target.closest("button[data-rel-type]");
+  if (typeBtn) {
+    // user picked cardinality
+    const card = typeBtn.dataset.relType;
+    const sourceId = ctxEntityId;
+    const targetId = pendingRelTargetId;
+    if (sourceId && targetId && card) {
+      createRelationshipAndEdit(sourceId, targetId, card);
+    }
+    return;
+  }
+
   const act = e.target.dataset.act;
   if (!act || !ctxEntityId) return;
-  ctxMenu.style.display = "none";
 
   const ent = erd.entities.find(en => en.id === ctxEntityId);
   if (!ent) return;
 
   if (act === "edit" || act === "attr") {
+    ctxMenu.style.display = "none";
+    resetCtxSubmenus();
     openEntityModal(ent);
     return;
   }
 
   if (act === "rel") {
-    const targetName = prompt("Target entity NAME (e.g., Course):");
-    if (!targetName) { render(); return; }
-    const target = erd.entities.find(e => e.name === targetName || e.id === targetName.toLowerCase());
-    if (!target) { alert("No such entity."); render(); return; }
-    const relName = prompt("Relationship name (e.g., takes, has):") || "rel";
-    const card = (prompt("Cardinality (1:1, 1:N, N:1, M:N)", "1:N") || "1:N").toUpperCase();
-    const id = "r" + Math.random().toString(36).slice(2,7);
-    erd.relationships.push({ id, name:relName, type:card, a:ctxEntityId, b:target.id });
-    render();
+    // DO NOT close ctxMenu. Show cascading targets.
+    pendingRelTargetId = null;
+
+    populateRelTargetSubmenu(ctxEntityId);
+
+    // Position target submenu aligned with the "Add Relationship" button row
+    const anchorRect = e.target.getBoundingClientRect();
+    positionMenuNextToAnchor(relTargetMenu, anchorRect, 6);
+
+    relTargetMenu.style.display = "block";
+    if (relTypeMenu) relTypeMenu.style.display = "none";
     return;
   }
 
   if (act === "weak") {
+    ctxMenu.style.display = "none";
+    resetCtxSubmenus();
+
     const n = promptForNewEntityName("Weak entity name:");
     if (!n) return;   // cancelled
 
@@ -1990,11 +2172,16 @@ ctxMenu.addEventListener("click", e => {
   }
 
   if (act === "dup") {
+    ctxMenu.style.display = "none";
+    resetCtxSubmenus();
     duplicateEntity(ctxEntityId);
     return;
   }
 
   if (act === "del") {
+    ctxMenu.style.display = "none";
+    resetCtxSubmenus();
+
     if (confirm("Delete entity and its relationships?")) {
       erd.entities = erd.entities.filter(e => e.id !== ctxEntityId);
       erd.relationships = erd.relationships.filter(r => r.a !== ctxEntityId && r.b !== ctxEntityId);
@@ -3381,7 +3568,7 @@ function switchErdPreset(key) {
     }
     erd = cloneErd(preset.data);
   }
-
+  
   // Re-render canvas
   render();
 
@@ -3391,7 +3578,6 @@ function switchErdPreset(key) {
   document.getElementById("mermaidOut").value =
     "erDiagram\n  %% Click 'Build Schema from ERD' to regenerate ERD text.";
 }
-
 
 
 //  ---------- Open Mermaid Preview in new tab ---------- */
