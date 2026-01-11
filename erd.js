@@ -73,6 +73,8 @@ let stage = null;
 let viewScale = 1;
 let viewPanX = 0;
 let viewPanY = 0;
+const PAN_SENS = 0.35;      // 0.20–0.50 is typical on tablets
+const PAN_DEAD_PX = 2.0;    // ignore tiny jitter in pixels
 
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 2.5;
@@ -209,12 +211,23 @@ function onWrapPointerMove(ev) {
     // keep the world point under the starting midpoint pinned under the current midpoint
     const worldUnderStartMid = screenToWorld(startMid.x, startMid.y);
 
-    viewScale = newScale;
-    viewPanX = mid.x - worldUnderStartMid.x * viewScale;
-    viewPanY = mid.y - worldUnderStartMid.y * viewScale;
+	// --- compute the "full" target pan (no damping) ---
+	const targetPanX = mid.x - worldUnderStartMid.x * newScale;
+	const targetPanY = mid.y - worldUnderStartMid.y * newScale;
 
-    // plus allow 2-finger translation drift (already included by moving mid)
-    applyViewTransform();
+	// --- optional dead-zone to avoid jitter ---
+	let dx = targetPanX - startPanX;
+	let dy = targetPanY - startPanY;
+	if (Math.abs(dx) < PAN_DEAD_PX) dx = 0;
+	if (Math.abs(dy) < PAN_DEAD_PX) dy = 0;
+
+	// --- apply damping ---
+	viewScale = newScale;
+	viewPanX = startPanX + dx * PAN_SENS;
+	viewPanY = startPanY + dy * PAN_SENS;
+
+	applyViewTransform();
+	
   }
 }
 
@@ -1344,7 +1357,8 @@ function enableDrag(el) {
 
   el.onpointerdown = (e) => {
     // Left mouse only; touch/pen allowed
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType !== "mouse" && activePtrs && activePtrs.size >= 2) return;
+	if (e.pointerType === "mouse" && e.button !== 0) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1395,7 +1409,8 @@ function enableRelDrag(hitEl) {
   setTouchActionNone(hitEl);
 
   hitEl.onpointerdown = (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType !== "mouse" && activePtrs && activePtrs.size >= 2) return;
+	if (e.pointerType === "mouse" && e.button !== 0) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1478,7 +1493,8 @@ function enableEntityAttrDrag(hitEl) {
   setTouchActionNone(hitEl);
 
   hitEl.onpointerdown = (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType !== "mouse" && activePtrs && activePtrs.size >= 2) return;
+	if (e.pointerType === "mouse" && e.button !== 0) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1528,7 +1544,8 @@ function enableRelAttrDrag(hitEl) {
   setTouchActionNone(hitEl);
 
   hitEl.onpointerdown = (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType !== "mouse" && activePtrs && activePtrs.size >= 2) return;
+	if (e.pointerType === "mouse" && e.button !== 0) return;
 
     e.preventDefault();
     e.stopPropagation();
