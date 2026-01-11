@@ -404,15 +404,11 @@ document.addEventListener("click", e => {
     ctxMenu.contains(e.target);
 
   if (!inEntityMenu) {
-	hardHideMenu(ctxMenu);  
     ctxMenu.style.display = "none";
     resetCtxSubmenus();
   }
-  
-  if (!relCtxMenu.contains(e.target)) {
-    hardHideMenu(relCtxMenu);
-	relCtxMenu.style.display = "none";
-  }
+
+  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
 });
 
 
@@ -1727,21 +1723,20 @@ function populateRelTargetSubmenu(sourceEntityId) {
   if (!relTargetMenu) return;
 
   relTargetMenu.innerHTML = "";
-  relTargetMenu.style.display = "block";      // ensure visible when populated (optional)
   if (relTypeMenu) relTypeMenu.style.display = "none";
   pendingRelTargetId = null;
 
-  const targets = (erd.entities || []);       // ✅ include source too (recursive rels)
+  const others = (erd.entities || []).filter(e => e.id !== sourceEntityId);
 
-  if (!targets.length) {
+  if (!others.length) {
     relTargetMenu.innerHTML = `
       <div style="padding:6px 10px; font-size:13px; color:#555;">
-        No entities available
+        No other entities available
       </div>`;
     return;
   }
 
-  targets.forEach(t => {
+  others.forEach(t => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = t.name;
@@ -1810,22 +1805,13 @@ function createRelationshipAndEdit(sourceId, targetId, card) {
   ctxMenu.style.display = "none";
   resetCtxSubmenus();
 
-  // close menus HARD (prevents iOS ghost boxes)
-  hardHideMenu(ctxMenu);
-  resetCtxSubmenus();
-
   render();
 
-  // (optional but often helps) delay modal 1 frame so repaint completes
-  requestAnimationFrame(() => openRelModal(rel));
-
   // open the relationship editor immediately
-  // openRelModal(rel);
+  openRelModal(rel);
 }
 
 function openEntityCtxMenuAtPageXY(pageX, pageY) {
-  hardHideMenu(ctxMenu);
-  hardHideMenu(relCtxMenu);
   ctxMenu.style.display = "none";
   relCtxMenu.style.display = "none";
   resetCtxSubmenus();
@@ -1837,29 +1823,6 @@ function openEntityCtxMenuAtPageXY(pageX, pageY) {
   populateRelTargetSubmenu(ctxEntityId);
   showCtxMenu(pageX, pageY);
 }
-
-function hardHideMenu(el) {
-  if (!el) return;
-  el.style.display = "none";
-  el.style.visibility = "hidden";
-  el.style.opacity = "0";
-  el.style.left = "-9999px";
-  el.style.top  = "-9999px";
-
-  // iOS repaint nudge
-  void el.offsetHeight;
-}
-
-function showMenu(el, x, y) {
-  if (!el) return;
-  el.style.left = x + "px";
-  el.style.top  = y + "px";
-  el.style.display = "block";
-  el.style.visibility = "visible";
-  el.style.opacity = "1";
-}
-
-
 
 function enableRelContext(el) {
   el.oncontextmenu = e => {
