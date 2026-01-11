@@ -3324,4 +3324,5 @@ ${escaped}
 //  ---------- Init ---------- */
 makeModalDraggable(entityModal);
 makeModalDraggable(relModal);
+wirePanZoom();
 render();
