@@ -126,8 +126,12 @@ textarea {
 }
 
 /* Pan/zoom gestures should be handled by JS, not browser scrolling */
-#canvasWrap {
+#canvasWrap, #erdStage {
   touch-action: none;
+}
+
+#canvasWrap {
+  overscroll-behavior: contain;
 }
 
 /* Stage that gets transformed */
