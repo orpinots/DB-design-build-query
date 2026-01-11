@@ -1717,26 +1717,25 @@ function positionMenuNextToAnchor(menuEl, anchorRect, offsetX = 6) {
   menuEl.style.top  = `${y}px`;
 }
 
-
-
 function populateRelTargetSubmenu(sourceEntityId) {
   if (!relTargetMenu) return;
 
   relTargetMenu.innerHTML = "";
+  relTargetMenu.style.display = "block";      // ensure visible when populated (optional)
   if (relTypeMenu) relTypeMenu.style.display = "none";
   pendingRelTargetId = null;
 
-  const others = (erd.entities || []).filter(e => e.id !== sourceEntityId);
+  const targets = (erd.entities || []);       // ✅ include source too (recursive rels)
 
-  if (!others.length) {
+  if (!targets.length) {
     relTargetMenu.innerHTML = `
       <div style="padding:6px 10px; font-size:13px; color:#555;">
-        No other entities available
+        No entities available
       </div>`;
     return;
   }
 
-  others.forEach(t => {
+  targets.forEach(t => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = t.name;
@@ -1758,6 +1757,7 @@ function populateRelTargetSubmenu(sourceEntityId) {
     relTargetMenu.appendChild(btn);
   });
 }
+
 
 function showRelTypeSubmenuForTarget(targetBtnEl) {
   if (!relTypeMenu) return;
