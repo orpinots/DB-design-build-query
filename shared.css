@@ -234,6 +234,22 @@ textarea {
   margin-top: 10px;
 }
 
+/* ---------- Modals: allow vertical scrolling inside ---------- */
+.modal-content {
+  max-height: calc(100vh - 80px); /* keep within viewport (accounts for top/bottom margin) */
+  overflow-y: auto;               /* enable vertical scroll when content is tall */
+  overflow-x: hidden;
+}
+
+/* Optional: keep header/footer visible-ish by giving them a background */
+.modal-header,
+.modal-footer {
+  background: #fff;
+}
+
+
+
+
 table {
   width: 100%;
   border-collapse: collapse;
