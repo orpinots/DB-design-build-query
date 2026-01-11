@@ -125,6 +125,18 @@ textarea {
   background: transparent;
 }
 
+/* Pan/zoom gestures should be handled by JS, not browser scrolling */
+#canvasWrap {
+  touch-action: none;
+}
+
+/* Stage that gets transformed */
+#erdStage {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
 
 /* ---------- Context menus (refined) ---------- */
 #ctxMenu,
@@ -447,3 +459,115 @@ th, td {
   background: #ffffff;
   box-shadow: 0 8px 20px rgba(0,0,0,.06);
 }
+
+
+/* =====================================================
+   Mobile + Tablet responsiveness (global)
+   Paste at END of shared.css
+===================================================== */
+
+/* Better touch defaults */
+button, select, input, textarea {
+  font-size: 16px; /* avoids iOS auto-zoom on focus */
+}
+
+/* Allow nav to wrap on narrow screens */
+.nav {
+  flex-wrap: wrap;
+}
+
+/* Make toolbar wrap nicely and avoid cramping */
+#toolbar {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+/* ---------- Responsive canvas sizing ---------- */
+/* Desktop baseline still fine; improve on smaller viewports via media queries below */
+#canvasWrap {
+  height: 70vh;          /* replaces the "always 520px" feel on variable screens */
+  min-height: 360px;     /* still usable on desktop */
+  max-height: 820px;     /* prevents ridiculously tall canvas on huge screens */
+}
+
+/* Keep SVG from being hijacked by browser gestures when we later add touch dragging */
+#svgLayer {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------- Small screens ---------- */
+@media (max-width: 900px) {
+  body {
+    margin: 10px; /* reclaim space */
+  }
+
+  /* Make the fixed copyright badge less intrusive */
+  .copyright-badge {
+    top: 8px;
+    right: 10px;
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+
+  /* Slightly bigger touch targets */
+  button {
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+
+  .nav a {
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+
+  /* Give the canvas more room on smaller screens */
+  #canvasWrap {
+    height: 72vh;
+    min-height: 320px;
+  }
+
+  /* Modal should fit comfortably */
+  .modal-content {
+    margin: 14px auto;
+    width: min(980px, 96vw);
+  }
+}
+
+/* ---------- Very small / phone ---------- */
+@media (max-width: 520px) {
+  body {
+    margin: 8px;
+  }
+
+  h1 {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  /* Make canvas as big as possible */
+  #canvasWrap {
+    height: 74vh;
+    min-height: 280px;
+  }
+
+  /* Tables can overflow horizontally — allow scroll */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ---------- iOS safe areas (notch / home indicator) ---------- */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+#canvasWrap { touch-action: none; }
+.entity, .rel-hit, .attr-hit { touch-action: none; }

@@ -62,8 +62,122 @@ let erd = loadCurrentErdState() || cloneErd(ERD_PRESETS.fourWay.data);
 
 
 const wrap = document.getElementById("canvasWrap");
-const svg  = document.getElementById("svgLayer");
+let svg  = document.getElementById("svgLayer"); // changed to let, because we may move it
 const svgNS = "http://www.w3.org/2000/svg";
+
+let stage = null;
+
+// ===== Pan/Zoom (world -> screen transform) =====
+
+// world-to-screen: screen = world * viewScale + (viewPanX, viewPanY)
+let viewScale = 1;
+let viewPanX = 0;
+let viewPanY = 0;
+
+const MIN_SCALE = 0.35;
+const MAX_SCALE = 2.5;
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function applyViewTransform() {
+  if (!stage) return;
+  stage.style.transform = `translate(${viewPanX}px, ${viewPanY}px) scale(${viewScale})`;
+}
+
+// Create a transform stage that will contain BOTH svg + entity divs
+(function initStage() {
+  // If already created, do nothing
+  if (document.getElementById("erdStage")) {
+    stage = document.getElementById("erdStage");
+    return;
+  }
+
+  stage = document.createElement("div");
+  stage.id = "erdStage";
+
+  // Move the existing SVG into the stage
+  if (svg && svg.parentElement) {
+    svg.parentElement.removeChild(svg);
+  }
+  stage.appendChild(svg);
+
+  // Put stage into canvasWrap
+  wrap.appendChild(stage);
+
+  // start with identity transform
+  applyViewTransform();
+})();
+
+
+
+// Convert a pointer/mouse event to WORLD coords (the coordinate system your ERD uses)
+function eventToWorld(ev) {
+  const rect = document.getElementById("canvasWrap").getBoundingClientRect();
+  const sx = ev.clientX - rect.left;
+  const sy = ev.clientY - rect.top;
+  return {
+    x: (sx - viewPanX) / viewScale,
+    y: (sy - viewPanY) / viewScale
+  };
+}
+
+// Convert SCREEN coords (relative to canvasWrap) to WORLD coords
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - viewPanX) / viewScale,
+    y: (sy - viewPanY) / viewScale
+  };
+}
+
+// Zoom around a specific SCREEN point (sx,sy) so the world point under the cursor stays fixed
+function zoomAtScreenPoint(newScale, sx, sy) {
+  newScale = clamp(newScale, MIN_SCALE, MAX_SCALE);
+  const before = screenToWorld(sx, sy);
+  viewScale = newScale;
+  // keep `before` pinned under (sx,sy)
+  viewPanX = sx - before.x * viewScale;
+  viewPanY = sy - before.y * viewScale;
+  applyViewTransform();
+}
+
+
+// =========================
+// Pointer / Touch utilities
+// =========================
+function clientPointFromEvent(ev) {
+  // PointerEvent / MouseEvent
+  if (ev && typeof ev.clientX === "number") {
+    return { clientX: ev.clientX, clientY: ev.clientY };
+  }
+  // TouchEvent fallback (rare if pointer events are supported)
+  const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
+  if (t) return { clientX: t.clientX, clientY: t.clientY };
+  return { clientX: 0, clientY: 0 };
+}
+
+function localPointInWrapFromClient(clientX, clientY) {
+  const rect = wrap.getBoundingClientRect();
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top
+  };
+}
+
+function pagePointFromClient(clientX, clientY) {
+  // For positioning context menus (absolute on page)
+  return {
+    x: clientX + window.scrollX,
+    y: clientY + window.scrollY
+  };
+}
+
+// Prevent iOS "double-tap to zoom" / pan conflicts while dragging
+function setTouchActionNone(el) {
+  // pointer events honor touch-action; makes dragging reliable on tablets
+  el.style.touchAction = "none";
+}
+
+
 
 const SQL_TYPE_OPTIONS = [
   "INTEGER",
@@ -325,7 +439,7 @@ function buildViewRelationships(erd, showAssocAsMM) {
 //  ---------- RENDER ---------- */
 function render() {
   // autoMarkAssociativeEntities(erd);   // now handled in schemaEngine
-  wrap.querySelectorAll(".entity, .rel-hit, .attr-hit").forEach(e => e.remove());
+  stage.querySelectorAll(".entity, .rel-hit, .attr-hit").forEach(e => e.remove());
   svg.innerHTML = "";
 
   if (!erd || !erd.entities || !erd.relationships) return;
@@ -387,7 +501,7 @@ function render() {
 
     enableDrag(d);
     enableContext(d);
-    wrap.appendChild(d);
+    stage.appendChild(d);
 
     ent.width  = d.offsetWidth;
     ent.height = d.offsetHeight;
@@ -826,7 +940,7 @@ function drawRelationship(r) {
       hitAttr.dataset.ovalX = String(ovalX);
       hitAttr.dataset.ovalY = String(ovalY);
       enableRelAttrDrag(hitAttr);
-      wrap.appendChild(hitAttr);
+      stage.appendChild(hitAttr);
     });
   }
   // hit area for context menu / edit / drag
@@ -837,7 +951,7 @@ function drawRelationship(r) {
   hit.dataset.rid = r.id;
   enableRelContext(hit);
   enableRelDrag(hit);   // make the relationship draggable
-  wrap.appendChild(hit);
+  stage.appendChild(hit);
 }
 
 
@@ -967,7 +1081,7 @@ function drawAttributeOvalsForEntity(ent) {
     hit.dataset.ovalX = String(ovalX);
     hit.dataset.ovalY = String(ovalY);
     enableEntityAttrDrag(hit);
-    wrap.appendChild(hit);
+    stage.appendChild(hit);
   });
 }
 
@@ -1128,28 +1242,66 @@ function drawOuterOneBar(x, y, towardX, towardY) {
 
 
 //  /* ---------- Drag entities ---------- */
-function enableDrag(el){
-  let ox,oy;
-  el.onmousedown = e => {
-    if (e.button !== 0) return;
-    ox=e.offsetX; oy=e.offsetY;
-    document.onmousemove = m => {
-      el.style.left = (m.pageX - wrap.offsetLeft - ox) + "px";
-      el.style.top  = (m.pageY - wrap.offsetTop  - oy) + "px";
-      const ent = erd.entities.find(e=>e.id===el.dataset.id);
-      ent.x = parseInt(el.style.left,10);
-      ent.y = parseInt(el.style.top,10);
+//  /* ---------- Drag entities (mouse + touch) ---------- */
+//  /* ---------- Drag entities (mouse + touch) ---------- */
+function enableDrag(el) {
+  setTouchActionNone(el);
+
+  el.onpointerdown = (e) => {
+    // Left mouse only; touch/pen allowed
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // hide menus if any
+    ctxMenu.style.display = "none";
+    relCtxMenu.style.display = "none";
+
+    const ent = erd.entities.find(en => en.id === el.dataset.id);
+    if (!ent) return;
+
+    // WORLD coordinates at drag start
+    const startWorld = eventToWorld(e);
+    const startEntX = ent.x;
+    const startEntY = ent.y;
+
+    // capture pointer so dragging keeps working if finger leaves element
+    try { el.setPointerCapture(e.pointerId); } catch {}
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+
+      const currWorld = eventToWorld(ev);
+
+      // Move entity in WORLD coords
+      ent.x = Math.round(startEntX + (currWorld.x - startWorld.x));
+      ent.y = Math.round(startEntY + (currWorld.y - startWorld.y));
+
       render();
     };
-    document.onmouseup = () => { document.onmousemove=null; };
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+    };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
-
 function enableRelDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    // left button only; let right-click still show context menu
-    if (e.button !== 0) return;
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -1157,53 +1309,54 @@ function enableRelDrag(hitEl) {
     const rel = findRelationshipById(rid);
     if (!rel) return;
 
-    const rect = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    ctxMenu.style.display = "none";
+    relCtxMenu.style.display = "none";
 
-    // current/default diamond position
+    // WORLD coords at drag start (undoes pan/zoom)
+    const startWorld = eventToWorld(e);
+
     const a = erd.entities.find(en => en.id === rel.a);
     const b = erd.entities.find(en => en.id === rel.b);
     if (!a || !b) return;
 
-    const aHalfW = (a.width  || 140) / 2;
-    const aHalfH = (a.height ||  60) / 2;
-    const bHalfW = (b.width  || 140) / 2;
-    const bHalfH = (b.height ||  60) / 2;
+    const aHalfW = (a.width || 140) / 2;
+    const aHalfH = (a.height || 60) / 2;
+    const bHalfW = (b.width || 140) / 2;
+    const bHalfH = (b.height || 60) / 2;
 
     const axCenter = a.x + aHalfW;
     const ayCenter = a.y + aHalfH;
     const bxCenter = b.x + bHalfW;
     const byCenter = b.y + bHalfH;
 
-    const pos = getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter);
+    // Diamond position is in WORLD coords
+    const pos = getRelDiamondPosition(rel, axCenter, ayCenter, bxCenter, byCenter, a.y);
     const startRelX = pos.x;
     const startRelY = pos.y;
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
 
-      const newX = startRelX + (currX - startMouseX);
-      const newY = startRelY + (currY - startMouseY);
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
 
-      // Update the relationship object we’re currently drawing from
+      const currWorld = eventToWorld(ev);
+
+      const newX = startRelX + (currWorld.x - startWorld.x);
+      const newY = startRelY + (currWorld.y - startWorld.y);
+
       rel.x = newX;
       rel.y = newY;
 
-      // 🔹 If this is a synthetic "assocView_*" relationship,
-      //    also persist its position on the underlying associative entity
+      // persist synthetic assocView_* relationship position back onto source entity
       if (rel.synthetic && rel.assocEntityId) {
         const src = erd.entities.find(en => en.id === rel.assocEntityId);
         if (src) {
-          // Remember diamond center for when we rebuild synthetic rels
           src.assocRelX = newX;
           src.assocRelY = newY;
 
-          // 🔹 NEW: move the *entity* so that when we toggle back,
-          //         the associative entity appears where this diamond is now.
-          const w = src.width  || 140;
-          const h = src.height ||  60;
+          const w = src.width || 140;
+          const h = src.height || 60;
           src.x = newX - w / 2;
           src.y = newY - h / 2;
         }
@@ -1212,15 +1365,26 @@ function enableRelDrag(hitEl) {
       render();
     };
 
-    document.onmouseup = () => {
-      document.onmousemove = null;
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 function enableEntityAttrDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    if (e.button !== 0) return;          // left button only
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -1228,65 +1392,84 @@ function enableEntityAttrDrag(hitEl) {
     const idx   = parseInt(hitEl.dataset.attrIndex, 10);
     const ent   = erd.entities.find(en => en.id === entId);
     if (!ent || !ent.attributes[idx]) return;
-    const attr  = ent.attributes[idx];
+    const attr = ent.attributes[idx];
 
-    const rect = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    // WORLD coords at drag start
+    const startWorld = eventToWorld(e);
 
+    // Starting oval position (WORLD coords)
     const startX = parseFloat(hitEl.dataset.ovalX);
     const startY = parseFloat(hitEl.dataset.ovalY);
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
-      attr.ovalX = startX + (currX - startMouseX);
-      attr.ovalY = startY + (currY - startMouseY);
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+
+      const currWorld = eventToWorld(ev);
+
+      attr.ovalX = startX + (currWorld.x - startWorld.x);
+      attr.ovalY = startY + (currWorld.y - startWorld.y);
+
       render();
     };
-    document.onmouseup = () => {
-      document.onmousemove = null;
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
 function enableRelAttrDrag(hitEl) {
-  hitEl.onmousedown = e => {
-    if (e.button !== 0) return;
+  setTouchActionNone(hitEl);
+
+  hitEl.onpointerdown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
     const relId = hitEl.dataset.relId;
     const idx   = parseInt(hitEl.dataset.attrIndex, 10);
 
-    // IMPORTANT: look in the *view* relationships first
     const relList = erd._viewRelationships || erd.relationships || [];
-    const rel     = relList.find(r => r.id === relId);
-
+    const rel = relList.find(r => r.id === relId);
     if (!rel || !rel.attributes || !rel.attributes[idx]) return;
+
     const attr = rel.attributes[idx];
 
-    const rect        = wrap.getBoundingClientRect();
-    const startMouseX = e.clientX - rect.left;
-    const startMouseY = e.clientY - rect.top;
+    // WORLD coords at drag start
+    const startWorld = eventToWorld(e);
 
+    // Starting oval position (WORLD coords)
     const startX = parseFloat(hitEl.dataset.ovalX);
     const startY = parseFloat(hitEl.dataset.ovalY);
 
-    document.onmousemove = ev => {
-      const currX = ev.clientX - rect.left;
-      const currY = ev.clientY - rect.top;
+    try { hitEl.setPointerCapture(e.pointerId); } catch {}
 
-      const newX = startX + (currX - startMouseX);
-      const newY = startY + (currY - startMouseY);
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
 
-      // move the *view* attribute
+      const currWorld = eventToWorld(ev);
+
+      const newX = startX + (currWorld.x - startWorld.x);
+      const newY = startY + (currWorld.y - startWorld.y);
+
+      // move the *view* attribute (WORLD coords)
       attr.ovalX = newX;
       attr.ovalY = newY;
 
-      // If this relationship came from collapsing an associative entity,
-      // also persist coordinates back to the source entity attribute so
-      // we don't lose them when buildViewRelationships() rebuilds.
+      // persist back onto assoc source entity attribute (so rebuild keeps coords)
       if (rel.fromAssocCollapse && attr._assocEntityId != null) {
         const assoc = erd.entities.find(e => e.id === attr._assocEntityId);
         if (assoc && Array.isArray(assoc.attributes)) {
@@ -1301,54 +1484,160 @@ function enableRelAttrDrag(hitEl) {
       render();
     };
 
-    document.onmouseup = () => {
-      document.onmousemove = null;
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener("pointermove", onMove, { passive: false });
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      try { hitEl.releasePointerCapture(e.pointerId); } catch {}
     };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   };
 }
 
-
 //  ---------- Context menus ---------- */
-function enableContext(el){
+function enableContext(el) {
+  // Desktop right-click still works
   el.oncontextmenu = e => {
     e.preventDefault();
     ctxEntityId = el.dataset.id;
     showCtxMenu(e.pageX, e.pageY);
   };
+
+  // Double click (mouse) still works
   el.ondblclick = e => {
     e.preventDefault();
     const ent = erd.entities.find(en => en.id === el.dataset.id);
     if (ent) openEntityModal(ent);
   };
+
+  // Touch long-press for context menu
+  let pressTimer = null;
+  let startClient = null;
+  let moved = false;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    moved = false;
+    startClient = clientPointFromEvent(e);
+    ctxEntityId = el.dataset.id;
+
+    pressTimer = setTimeout(() => {
+      if (moved) return;
+      const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
+      showCtxMenu(pt.x, pt.y);
+    }, 550);
+  }, { passive: true });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!pressTimer || e.pointerType !== "touch") return;
+
+    const p = clientPointFromEvent(e);
+    const dx = p.clientX - startClient.clientX;
+    const dy = p.clientY - startClient.clientY;
+
+    if (Math.hypot(dx, dy) > 10) { // movement cancels long-press
+      moved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }, { passive: true });
+
+  el.addEventListener("pointerup", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
+
+  el.addEventListener("pointercancel", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
 }
+
 function showCtxMenu(x,y){
   ctxMenu.style.left  = x + "px";
   ctxMenu.style.top   = y + "px";
   ctxMenu.style.display = "block";
 }
 
-function enableRelContext(el){
+function enableRelContext(el) {
   el.oncontextmenu = e => {
     e.preventDefault();
     ctxRelId = el.dataset.rid;
     showRelCtxMenu(e.pageX, e.pageY);
   };
+
   el.ondblclick = e => {
     e.preventDefault();
     const rel = erd.relationships.find(r => r.id === el.dataset.rid);
     if (rel) openRelModal(rel);
   };
+
+  // Touch long-press
+  let pressTimer = null;
+  let startClient = null;
+  let moved = false;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    moved = false;
+    startClient = clientPointFromEvent(e);
+    ctxRelId = el.dataset.rid;
+
+    pressTimer = setTimeout(() => {
+      if (moved) return;
+      const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
+      showRelCtxMenu(pt.x, pt.y);
+    }, 550);
+  }, { passive: true });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!pressTimer || e.pointerType !== "touch") return;
+
+    const p = clientPointFromEvent(e);
+    const dx = p.clientX - startClient.clientX;
+    const dy = p.clientY - startClient.clientY;
+
+    if (Math.hypot(dx, dy) > 10) {
+      moved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }, { passive: true });
+
+  el.addEventListener("pointerup", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
+
+  el.addEventListener("pointercancel", () => {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  });
 }
+
+
 function showRelCtxMenu(x,y){
   relCtxMenu.style.left  = x + "px";
   relCtxMenu.style.top   = y + "px";
   relCtxMenu.style.display = "block";
 }
 
-document.addEventListener("click", e => {
+
+
+document.addEventListener("pointerdown", e => {
   if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
   if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
 });
+
+
+
+
 
 //  Entity menu actions */
 ctxMenu.addEventListener("click", e => {
@@ -2899,6 +3188,112 @@ function makeModalDraggable(modal) {
     document.addEventListener("mouseup", onMouseUp);
   });
 }
+
+function wirePanZoom() {
+  const canvas = document.getElementById("canvasWrap");
+  if (!canvas) return;
+
+  // active pointers for pinch
+  const pointers = new Map();
+
+  let pinchStartDist = 0;
+  let pinchStartScale = 1;
+  let pinchStartMid = { x: 0, y: 0 };
+  let pinchStartPan = { x: 0, y: 0 };
+
+  function dist(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  function midpoint(a, b) {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
+  function getScreenPointFromEvent(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    // allow single-finger/mouse interaction to fall through to entity dragging
+    // but we track pointers to enable pinch when there are 2.
+    pointers.set(e.pointerId, getScreenPointFromEvent(e));
+    canvas.setPointerCapture(e.pointerId);
+
+    if (pointers.size === 2) {
+      const pts = Array.from(pointers.values());
+      pinchStartDist = dist(pts[0], pts[1]);
+      pinchStartScale = viewScale;
+      pinchStartMid = midpoint(pts[0], pts[1]);
+      pinchStartPan = { x: viewPanX, y: viewPanY };
+    }
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+
+    pointers.set(e.pointerId, getScreenPointFromEvent(e));
+
+    // Only handle gestures when we have exactly 2 pointers (two-finger)
+    if (pointers.size === 2) {
+      e.preventDefault();
+
+      const pts = Array.from(pointers.values());
+      const mid = midpoint(pts[0], pts[1]);
+      const d = dist(pts[0], pts[1]);
+
+      if (pinchStartDist <= 0) return;
+
+      const scaleFactor = d / pinchStartDist;
+      const newScale = clamp(pinchStartScale * scaleFactor, MIN_SCALE, MAX_SCALE);
+
+      // Zoom around the current midpoint
+      // Keep the world point under pinchStartMid pinned, then add panning by midpoint delta.
+      const pinnedWorld = screenToWorld(pinchStartMid.x, pinchStartMid.y);
+      viewScale = newScale;
+      viewPanX = pinchStartMid.x - pinnedWorld.x * viewScale;
+      viewPanY = pinchStartMid.y - pinnedWorld.y * viewScale;
+
+      // Two-finger pan: move by midpoint shift
+      viewPanX += (mid.x - pinchStartMid.x);
+      viewPanY += (mid.y - pinchStartMid.y);
+
+      applyViewTransform();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener("pointerup", (e) => {
+    pointers.delete(e.pointerId);
+
+    // reset pinch baseline when leaving pinch mode
+    if (pointers.size < 2) {
+      pinchStartDist = 0;
+    }
+  });
+
+  canvas.addEventListener("pointercancel", (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchStartDist = 0;
+  });
+
+  // Desktop trackpad/mouse wheel zoom (optional but very nice)
+  canvas.addEventListener("wheel", (e) => {
+    // Common convention: ctrl+wheel zoom. Trackpads sometimes do pinch-to-zoom as ctrlKey.
+    // We'll zoom on ctrlKey OR if user uses a trackpad pinch that sets ctrlKey.
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    const delta = -e.deltaY; // up -> zoom in
+    const zoomStep = delta > 0 ? 1.08 : 1 / 1.08;
+    zoomAtScreenPoint(viewScale * zoomStep, sx, sy);
+  }, { passive: false });
+}
+
 
 
 //  ---------- Open Mermaid Preview in new tab ---------- */
