@@ -1629,12 +1629,157 @@ function showRelCtxMenu(x,y){
 }
 
 
+window.addEventListener("DOMContentLoaded", () => {
+  const sel = document.getElementById("erdPresetSelect");
+  if (sel) sel.value = "fourWay";
+
+  refreshSavedErdList();   // populate saved ERD dropdown from localStorage
+});
+
+//  ---------- Draggable modals ---------- */
+function makeModalDraggable(modal) {
+  const content = modal.querySelector(".modal-content");
+  const header  = modal.querySelector(".modal-header");
+
+  let isDragging = false;
+  let startX, startY, origLeft, origTop;
+
+  function onMouseMove(ev) {
+    if (!isDragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    content.style.left = (origLeft + dx) + "px";
+    content.style.top  = (origTop  + dy) + "px";
+  }
+
+  function onMouseUp() {
+    isDragging = false;
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  }
+
+  header.addEventListener("mousedown", e => {
+    if (e.button !== 0) return;
+
+    isDragging = true;
+
+    // current position of centered modal
+    const rect = content.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    origLeft = rect.left;
+    origTop  = rect.top;
+
+    // lock into fixed coordinates and remove the centering transform
+    content.style.position = "fixed";
+    content.style.margin   = "0";
+    content.style.left     = origLeft + "px";
+    content.style.top      = origTop  + "px";
+    content.style.transform = "none";
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  });
+}
+
+function wirePanZoom() {
+  const canvas = document.getElementById("canvasWrap");
+  if (!canvas) return;
+
+  const pointers = new Map();
+  let pinchStartDist = 0;
+  let pinchStartScale = 1;
+  let pinchStartMid = { x: 0, y: 0 };
+
+  function dist(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+  function midpoint(a, b) {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  function getScreenPointFromEvent(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  function onPointerDown(e) {
+    // capture-phase: we see this even if entity handlers stopPropagation
+    pointers.set(e.pointerId, getScreenPointFromEvent(e));
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+
+    if (pointers.size === 2) {
+      // When pinch begins, prevent browser actions and initialize baseline
+      e.preventDefault();
+
+      const pts = Array.from(pointers.values());
+      pinchStartDist = dist(pts[0], pts[1]);
+      pinchStartScale = viewScale;
+      pinchStartMid = midpoint(pts[0], pts[1]);
+    }
+  }
+
+  function onPointerMove(e) {
+    if (!pointers.has(e.pointerId)) return;
+
+    pointers.set(e.pointerId, getScreenPointFromEvent(e));
+
+    if (pointers.size === 2) {
+      e.preventDefault();
+
+      const pts = Array.from(pointers.values());
+      const mid = midpoint(pts[0], pts[1]);
+      const d = dist(pts[0], pts[1]);
+      if (pinchStartDist <= 0) return;
+
+      const scaleFactor = d / pinchStartDist;
+      const newScale = clamp(pinchStartScale * scaleFactor, MIN_SCALE, MAX_SCALE);
+
+      // Keep world point under pinchStartMid pinned, then pan by midpoint delta
+      const pinnedWorld = screenToWorld(pinchStartMid.x, pinchStartMid.y);
+
+      viewScale = newScale;
+      viewPanX = pinchStartMid.x - pinnedWorld.x * viewScale;
+      viewPanY = pinchStartMid.y - pinnedWorld.y * viewScale;
+
+      viewPanX += (mid.x - pinchStartMid.x);
+      viewPanY += (mid.y - pinchStartMid.y);
+
+      applyViewTransform();
+    }
+  }
+
+  function onPointerUp(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchStartDist = 0;
+  }
+
+  // ✅ CAPTURE PHASE is the key change
+  canvas.addEventListener("pointerdown", onPointerDown, { passive: false, capture: true });
+  canvas.addEventListener("pointermove", onPointerMove, { passive: false, capture: true });
+  canvas.addEventListener("pointerup", onPointerUp, { capture: true });
+  canvas.addEventListener("pointercancel", onPointerUp, { capture: true });
+
+  // Wheel zoom stays the same
+  canvas.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    const delta = -e.deltaY;
+    const zoomStep = delta > 0 ? 1.08 : 1 / 1.08;
+    zoomAtScreenPoint(viewScale * zoomStep, sx, sy);
+  }, { passive: false });
+}
+
 
 document.addEventListener("pointerdown", e => {
   if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
   if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
 });
-
 
 
 
@@ -3133,165 +3278,6 @@ function switchErdPreset(key) {
     "-- Click 'Build Schema from ERD' to regenerate SQL for this ERD.";
   document.getElementById("mermaidOut").value =
     "erDiagram\n  %% Click 'Build Schema from ERD' to regenerate ERD text.";
-}
-
-
-window.addEventListener("DOMContentLoaded", () => {
-  const sel = document.getElementById("erdPresetSelect");
-  if (sel) sel.value = "fourWay";
-
-  refreshSavedErdList();   // populate saved ERD dropdown from localStorage
-});
-
-//  ---------- Draggable modals ---------- */
-function makeModalDraggable(modal) {
-  const content = modal.querySelector(".modal-content");
-  const header  = modal.querySelector(".modal-header");
-
-  let isDragging = false;
-  let startX, startY, origLeft, origTop;
-
-  function onMouseMove(ev) {
-    if (!isDragging) return;
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    content.style.left = (origLeft + dx) + "px";
-    content.style.top  = (origTop  + dy) + "px";
-  }
-
-  function onMouseUp() {
-    isDragging = false;
-    document.removeEventListener("mousemove", onMouseMove);
-    document.removeEventListener("mouseup", onMouseUp);
-  }
-
-  header.addEventListener("mousedown", e => {
-    if (e.button !== 0) return;
-
-    isDragging = true;
-
-    // current position of centered modal
-    const rect = content.getBoundingClientRect();
-    startX = e.clientX;
-    startY = e.clientY;
-    origLeft = rect.left;
-    origTop  = rect.top;
-
-    // lock into fixed coordinates and remove the centering transform
-    content.style.position = "fixed";
-    content.style.margin   = "0";
-    content.style.left     = origLeft + "px";
-    content.style.top      = origTop  + "px";
-    content.style.transform = "none";
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  });
-}
-
-function wirePanZoom() {
-  const canvas = document.getElementById("canvasWrap");
-  if (!canvas) return;
-
-  // active pointers for pinch
-  const pointers = new Map();
-
-  let pinchStartDist = 0;
-  let pinchStartScale = 1;
-  let pinchStartMid = { x: 0, y: 0 };
-  let pinchStartPan = { x: 0, y: 0 };
-
-  function dist(a, b) {
-    const dx = a.x - b.x, dy = a.y - b.y;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  function midpoint(a, b) {
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  }
-
-  function getScreenPointFromEvent(ev) {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
-  }
-
-  canvas.addEventListener("pointerdown", (e) => {
-    // allow single-finger/mouse interaction to fall through to entity dragging
-    // but we track pointers to enable pinch when there are 2.
-    pointers.set(e.pointerId, getScreenPointFromEvent(e));
-    canvas.setPointerCapture(e.pointerId);
-
-    if (pointers.size === 2) {
-      const pts = Array.from(pointers.values());
-      pinchStartDist = dist(pts[0], pts[1]);
-      pinchStartScale = viewScale;
-      pinchStartMid = midpoint(pts[0], pts[1]);
-      pinchStartPan = { x: viewPanX, y: viewPanY };
-    }
-  });
-
-  canvas.addEventListener("pointermove", (e) => {
-    if (!pointers.has(e.pointerId)) return;
-
-    pointers.set(e.pointerId, getScreenPointFromEvent(e));
-
-    // Only handle gestures when we have exactly 2 pointers (two-finger)
-    if (pointers.size === 2) {
-      e.preventDefault();
-
-      const pts = Array.from(pointers.values());
-      const mid = midpoint(pts[0], pts[1]);
-      const d = dist(pts[0], pts[1]);
-
-      if (pinchStartDist <= 0) return;
-
-      const scaleFactor = d / pinchStartDist;
-      const newScale = clamp(pinchStartScale * scaleFactor, MIN_SCALE, MAX_SCALE);
-
-      // Zoom around the current midpoint
-      // Keep the world point under pinchStartMid pinned, then add panning by midpoint delta.
-      const pinnedWorld = screenToWorld(pinchStartMid.x, pinchStartMid.y);
-      viewScale = newScale;
-      viewPanX = pinchStartMid.x - pinnedWorld.x * viewScale;
-      viewPanY = pinchStartMid.y - pinnedWorld.y * viewScale;
-
-      // Two-finger pan: move by midpoint shift
-      viewPanX += (mid.x - pinchStartMid.x);
-      viewPanY += (mid.y - pinchStartMid.y);
-
-      applyViewTransform();
-    }
-  }, { passive: false });
-
-  canvas.addEventListener("pointerup", (e) => {
-    pointers.delete(e.pointerId);
-
-    // reset pinch baseline when leaving pinch mode
-    if (pointers.size < 2) {
-      pinchStartDist = 0;
-    }
-  });
-
-  canvas.addEventListener("pointercancel", (e) => {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinchStartDist = 0;
-  });
-
-  // Desktop trackpad/mouse wheel zoom (optional but very nice)
-  canvas.addEventListener("wheel", (e) => {
-    // Common convention: ctrl+wheel zoom. Trackpads sometimes do pinch-to-zoom as ctrlKey.
-    // We'll zoom on ctrlKey OR if user uses a trackpad pinch that sets ctrlKey.
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    const delta = -e.deltaY; // up -> zoom in
-    const zoomStep = delta > 0 ? 1.08 : 1 / 1.08;
-    zoomAtScreenPoint(viewScale * zoomStep, sx, sy);
-  }, { passive: false });
 }
 
 
