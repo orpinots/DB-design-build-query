@@ -1414,7 +1414,6 @@ function drawOuterOneBar(x, y, towardX, towardY) {
 
 //  /* ---------- Drag entities ---------- */
 //  /* ---------- Drag entities (mouse + touch) ---------- */
-//  /* ---------- Drag entities (mouse + touch) ---------- */
 function enableDrag(el) {
   setTouchActionNone(el);
 
@@ -1448,8 +1447,20 @@ function enableDrag(el) {
       const currWorld = eventToWorld(ev);
 
       // Move entity in WORLD coords
-      ent.x = Math.round(startEntX + (currWorld.x - startWorld.x));
-      ent.y = Math.round(startEntY + (currWorld.y - startWorld.y));
+      const newX = Math.round(startEntX + (currWorld.x - startWorld.x));
+      const newY = Math.round(startEntY + (currWorld.y - startWorld.y));
+
+      const dx = newX - ent.x;
+      const dy = newY - ent.y;
+
+      ent.x = newX;
+      ent.y = newY;
+
+      // Move any "pinned" attribute ovals by the same delta so they stay attached.
+      (ent.attributes || []).forEach(a => {
+        if (typeof a.ovalX === "number") a.ovalX += dx;
+        if (typeof a.ovalY === "number") a.ovalY += dy;
+      });
 
       render();
     };
@@ -2020,7 +2031,10 @@ function wirePanZoom() {
   }
 
   function onPointerDown(e) {
-    // capture-phase: we see this even if entity handlers stopPropagation
+	// Gesture classification happens at pointerdown; touching these events
+	// will prevent the browser from ever firing `contextmenu`.
+	if (e.button === 2 || (e.ctrlKey && e.pointerType === "mouse")) return;	
+	if (e.pointerType === "mouse" && e.button !== 0) return;    // capture-phase: we see this even if entity handlers stopPropagation
     pointers.set(e.pointerId, getScreenPointFromEvent(e));
     try { canvas.setPointerCapture(e.pointerId); } catch {}
 
