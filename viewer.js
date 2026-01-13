@@ -1,6 +1,10 @@
 let db = null;
 
-const sqlText = (loadGeneratedSql() || "").trim();
+const sqlText = (
+  localStorage.getItem("sql_sandbox_last_sql") ||
+  loadGeneratedSql() ||
+  ""
+).trim();
 
 const statusDiv = document.getElementById("viewer-status");
 const tableSelect = document.getElementById("viewer-table-list");
@@ -25,7 +29,11 @@ function renderTable(columns, rows) {
 }
 
 async function initViewerDb() {
-  const sqlText = (loadGeneratedSql() || "").trim();
+  const sqlText = (
+    localStorage.getItem("sql_sandbox_last_sql") ||
+    loadGeneratedSql() ||
+    ""
+  ).trim();
   if (!sqlText) {
     setStatus("No database found yet. Go to SQL Sandbox and click “Run Schema”.", true);
     return;
