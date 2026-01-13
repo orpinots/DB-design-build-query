@@ -5,6 +5,8 @@ let lastCreateOrder = [];
 const MAX_SCHEMAS = 5;
 const MAX_QUERIES = 10;
 const SCHEMA_STORAGE_KEY = 'sql_sandbox_schemas';
+const SANDBOX_LAST_SQL_KEY = "sql_sandbox_last_sql"; // stores last DB script (not query) ran
+
 const QUERY_STORAGE_KEY = 'sql_sandbox_queries';
 const DEFAULT_SCHEMAS = window.DEFAULT_SCHEMAS || [];
 const defaultQuery = window.INITIAL_DEFAULT_QUERY || '';
@@ -22,6 +24,11 @@ const statusMessage = document.getElementById('status-message');
 const resultsTableDiv = document.getElementById('results-table');
 const showErdButton = document.getElementById('show-erd-button');
 const showResultsButton = document.getElementById('show-results-button');
+
+const last = localStorage.getItem(SANDBOX_LAST_SQL_KEY);
+if (last && last.trim()) {
+  dbScriptInput.value = last;
+}
 
 // --- Edit panel DOM ---
 const editPanel = document.getElementById('edit-panel');
@@ -94,7 +101,8 @@ async function initDb() {
 	
     const schemaScript = dbScriptInput.value.trim();
     if (!schemaScript) throw new Error("Schema script cannot be empty.");
-	saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
+	localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value.trim());
+//	saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
 
     const { ddl } = splitDdlAndData(schemaScript);
     const reorderedDdl = reorderDdlByForeignKeys(ddl);
@@ -882,8 +890,8 @@ function applyEditsAndUpdateSchemaSql() {
     db.run('COMMIT;');
 
     refreshDbScriptTextareaFromLiveDb();
-	
-	saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
+	localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value.trim());
+	// saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
 
     populateTableList();
     generateERD();
