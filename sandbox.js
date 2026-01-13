@@ -529,6 +529,18 @@ function renderTable(columns, rows) {
 
 function splitDdlAndData(scriptText) {
   const s = scriptText || '';
+
+  // ✅ Prefer splitting at our generated INSERT-block headers, if present
+  // This prevents "-- INSERTS: Student" from being misclassified as "DDL"
+  const insertsHeaderIdx = s.search(/^\s*--\s*INSERTS\s*:/im);
+  if (insertsHeaderIdx !== -1) {
+    return {
+      ddl: s.slice(0, insertsHeaderIdx).trim(),
+      data: s.slice(insertsHeaderIdx).trim()
+    };
+  }
+
+  // Fallback: split at first INSERT INTO
   const insertIdx = s.search(/^\s*INSERT\s+INTO\b/im);
   if (insertIdx === -1) {
     return { ddl: s.trim(), data: '' };
@@ -538,6 +550,7 @@ function splitDdlAndData(scriptText) {
     data: s.slice(insertIdx).trim()
   };
 }
+
 
 function extractCreateOrder(ddlText) {
   // Handles: CREATE TABLE tableName ( ... ) ;
