@@ -6,6 +6,7 @@ const MAX_SCHEMAS = 5;
 const MAX_QUERIES = 10;
 const SCHEMA_STORAGE_KEY = 'sql_sandbox_schemas';
 const SANDBOX_LAST_SQL_KEY = "sql_sandbox_last_sql"; // stores last DB script (not query) ran
+const SANDBOX_LAST_QUERY_KEY = "sql_sandbox_last_query";
 
 const QUERY_STORAGE_KEY = 'sql_sandbox_queries';
 const DEFAULT_SCHEMAS = window.DEFAULT_SCHEMAS || [];
@@ -16,6 +17,9 @@ dbScriptInput.addEventListener("input", () => {
   localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value);
 });
 const queryInput = document.getElementById('query-input');
+queryInput.addEventListener("input", () => {
+  localStorage.setItem(SANDBOX_LAST_QUERY_KEY, queryInput.value);
+});
 const savedSchemasSelect = document.getElementById('saved-schemas');
 const savedQueriesSelect = document.getElementById('saved-queries');
 const tableListSelect = document.getElementById('table-list');
@@ -71,12 +75,21 @@ if (lastIsUserEdited) {
 // SEED the “last sql” key with whatever we decided to show on load
 localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value);
 
-// Query textarea default
-if (firstDefaultSchema) {
+const lastQuery = (localStorage.getItem(SANDBOX_LAST_QUERY_KEY) || "").trim();
+
+if (lastQuery) {
+  // Priority 1: restore what the user last typed
+  queryInput.value = localStorage.getItem(SANDBOX_LAST_QUERY_KEY);
+} else if (firstDefaultSchema) {
+  // Priority 2: default query (from schema pack)
   queryInput.value = (window.INITIAL_DEFAULT_QUERY || firstDefaultSchema.defaultQuery || "");
 } else {
+  // Priority 3: fallback placeholder-ish default
   queryInput.value = "-- SELECT * FROM your_table;";
 }
+
+// Optional but nice: seed storage so other pages / reloads are consistent immediately
+localStorage.setItem(SANDBOX_LAST_QUERY_KEY, queryInput.value);
 
 loadAllSchemasList();
 loadSavedQueriesList();
