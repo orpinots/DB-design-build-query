@@ -716,6 +716,38 @@ function drawDoubleLine(x1, y1, x2, y2) {
   });
 }
 
+
+function drawRoleLabelNearMinSymbol(endX, endY, towardX, towardY, roleText, perpSign = 1, fixedPerp = null) {
+  if (!roleText) return;
+
+  const dx = towardX - endX;
+  const dy = towardY - endY;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const ux = dx / len, uy = dy / len;
+
+  let px, py;
+  if (fixedPerp && typeof fixedPerp.x === "number" && typeof fixedPerp.y === "number") {
+    px = fixedPerp.x; py = fixedPerp.y;
+  } else {
+    px = -uy; py = ux;
+  }
+
+  const offsetAlong = 30;          // move a bit away from the min symbol
+  const offsetPerp  = 12 * perpSign; // separate labels left/right of leg
+
+  const tx = endX + ux * offsetAlong + px * offsetPerp;
+  const ty = endY + uy * offsetAlong + py * offsetPerp;
+
+  const t = document.createElementNS(svgNS, "text");
+  t.setAttribute("x", tx);
+  t.setAttribute("y", ty);
+  t.setAttribute("text-anchor", "middle");
+  t.style.fontSize = "10px";
+  t.style.fill = "#222";
+  t.textContent = roleText;
+  svg.appendChild(t);
+}
+
 //  ---------- Relationships + Crow's Feet ---------- */
 function drawRelationship(r) {
   const a = erd.entities.find(e => e.id === r.a);
@@ -875,6 +907,24 @@ function drawRelationship(r) {
       drawInnerCircle(bEnd.x, bEnd.y, mx, my);
     } else {
       drawInnerOneBar(bEnd.x, bEnd.y, mx, my);
+    }
+    // ---- role labels (binary/unary only; not n-ary; not specialization) ----
+    if (!isNAry) {
+      // Keep them short so they don't clutter; optional
+      const roleA = (r.roleA || "").trim();
+      const roleB = (r.roleB || "").trim();
+	  // Choose perp signs so each label is pushed OUTWARD from the diamond,
+	  // not both toward the middle.
+	  if (isUnary) {
+	    if (roleA) drawRoleLabelNearMinSymbol(aEnd.x, aEnd.y, mx, my, roleA, +1);
+	    if (roleB) drawRoleLabelNearMinSymbol(bEnd.x, bEnd.y, mx, my, roleB, -1);
+	  } else {
+	    const aPerpSign = (aEnd.x < mx) ? -1 : +1;
+	    const bPerpSign = (bEnd.x < mx) ? +1 : -1;
+
+	    if (roleA) drawRoleLabelNearMinSymbol(aEnd.x, aEnd.y, mx, my, roleA, aPerpSign);
+	    if (roleB) drawRoleLabelNearMinSymbol(bEnd.x, bEnd.y, mx, my, roleB, bPerpSign);
+	  }
     }
   }
 
@@ -2567,11 +2617,14 @@ function openRelModal(rel) {
 
   const extras = rel.extras || [];
   const relAttrs = rel.attributes || [];
+  const isUnary = rel.a === rel.b;
 
   // --- specialization state (new) ---
   const specializationExtras = rel.specializationExtras || [];
   const specDisjoint = (rel.specializationDisjoint !== false);  // default: disjoint
   const specTotal    = !!rel.specializationTotal;                // default: partial
+
+  const supportsRoleLabels = (extras.length === 0) && (specializationExtras.length === 0);
 
   const availableOthers = erd.entities
     .filter(e => e.id !== rel.a && e.id !== rel.b);
@@ -2621,6 +2674,9 @@ function openRelModal(rel) {
     </tr>
   `).join("");
 
+  const roleAVal = (typeof rel.roleA === "string") ? rel.roleA : "";
+  const roleBVal = (typeof rel.roleB === "string") ? rel.roleB : "";
+
   relSidesPanel.innerHTML = `
     <div class="rel-edit-layout">
       <div class="rel-edit-side">
@@ -2632,10 +2688,22 @@ function openRelModal(rel) {
               ${disableManyA ? "disabled" : ""}>
             Many on this side (…*)
           </label>
-          <label>
-            <input type="checkbox" id="relOptA" ${rel.optA ? "checked" : ""}>
-            Optional on this side (0..)
-          </label>
+			  
+		  <label class="opt-with-role">
+			<input type="checkbox" id="relOptA" ${rel.optA ? "checked" : ""}>
+			Optional on this side (0..)
+
+			${supportsRoleLabels ? `
+			  <span class="role-inline">
+			    Role:
+			    <input type="text"
+			           id="relRoleA"
+			           class="rel-role-input"
+			           value="${roleAVal}"
+			           placeholder="${isUnary ? "e.g., manager" : "e.g., buyer"}">
+			  </span>
+			` : ``}
+	      </label>			  		  
         </div>
       </div>
 
@@ -2648,10 +2716,21 @@ function openRelModal(rel) {
               ${disableManyB ? "disabled" : ""}>
             Many on this side (…*)
           </label>
-          <label>
-            <input type="checkbox" id="relOptB" ${rel.optB ? "checked" : ""}>
-            Optional on this side (0..)
-          </label>
+		  <label class="opt-with-role">
+			<input type="checkbox" id="relOptB" ${rel.optB ? "checked" : ""}>
+			Optional on this side (0..)
+
+			${supportsRoleLabels ? `
+			  <span class="role-inline">
+			    Role:
+			    <input type="text"
+			           id="relRoleB"
+			           class="rel-role-input"
+			           value="${roleBVal}"
+			           placeholder="${isUnary ? "e.g., subordinate" : "e.g., order"}">
+			  </span>
+			` : ``}
+		  </label>
         </div>
       </div>
     </div>
@@ -2844,6 +2923,27 @@ function saveRelModal() {
     });
     rel.extras = extras;
   }
+  
+  // 3.5 Role labels (only for unary/binary; NOT for n-ary or specialization)
+  const hasNAry = Array.isArray(rel.extras) && rel.extras.length > 0;
+
+  // We'll compute specialization later; for now just read role inputs if present
+  const roleAEl = document.getElementById("relRoleA");
+  const roleBEl = document.getElementById("relRoleB");
+
+  // Temporarily store raw values (we'll decide whether to keep them after spec logic)
+  const roleARaw = roleAEl ? roleAEl.value.trim() : "";
+  const roleBRaw = roleBEl ? roleBEl.value.trim() : "";
+
+  // If n-ary is active, immediately clear (we don't support role labels there)
+  if (hasNAry) {
+    rel.roleA = "";
+    rel.roleB = "";
+  } else {
+    // Tentatively set; may be cleared if specialization is later enabled
+    rel.roleA = roleARaw;
+    rel.roleB = roleBRaw;
+  }  
 
   // 4. specialization participants (new)
   if (relSidesPanel) {
@@ -2890,6 +2990,12 @@ function saveRelModal() {
         rel.specializationTotal    = hasSpec && specTotalEl && specTotalEl.checked;
       }
     }
+  }
+  // If specialization is active, we do NOT support role labels → clear them
+  const hasSpec = Array.isArray(rel.specializationExtras) && rel.specializationExtras.length > 0;
+  if (hasSpec) {
+    rel.roleA = "";
+    rel.roleB = "";
   }
     
   // 5. Relationship attributes

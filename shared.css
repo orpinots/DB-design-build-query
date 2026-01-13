@@ -192,9 +192,6 @@ textarea {
 
 
 
-
-
-
 /* Modals */
 .modal {
   position: fixed;
@@ -247,8 +244,120 @@ textarea {
   background: #fff;
 }
 
+/* --- Compact role label layout inside Edit Relationship modal --- */
+.rel-role-row span {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+}
+
+/* Optional-row that also contains role input (same line) */
+.rel-edit-side-options label.opt-with-role{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* push role group to the far right */
+.rel-edit-side-options label.opt-with-role .role-inline{
+  margin-left: 14px;        /* small indent instead of "push to the edge" */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* compact role box */
+.rel-edit-side-options .rel-role-input{
+  width: 140px;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+/* ==========================================
+   Cascading context menu (Add Relationship)
+   ========================================== */
+
+/* Wrapper for a menu row that owns submenus */
+#ctxMenu .menu-item {
+  position: relative;
+}
+
+/* The row’s visible button */
+#ctxMenu .submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Little arrow on the right */
+#ctxMenu .submenu-trigger .arrow {
+  opacity: 0.65;
+  font-size: 12px;
+}
+
+/* Submenu panel (hidden by default) */
+#ctxMenu .submenu {
+  position: absolute;
+  top: 0;
+
+  /* ✅ KEY FIX: remove the hover-gap */
+  left: 100%;            /* was: calc(100% + 6px) */
+  margin-left: 0;        /* (optional) keep at 0 to avoid any gap */
+
+  display: none;
+
+  min-width: 170px;
+  max-width: 220px;
+
+  background: #f9fbff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
+  z-index: 10000;
+}
+
+/* Show submenu when hovering over the parent row */
+#ctxMenu .has-submenu:hover > .submenu {
+  display: block;
+}
+
+/* Ensure submenu buttons look identical to normal ctx menu buttons */
+#ctxMenu .submenu button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 2px 0;
+  text-align: left;
+  font-size: 13px;
+  color: #222;
+  cursor: pointer;
+}
+
+#ctxMenu .submenu button:hover {
+  background: #e9f1ff;
+  color: #0b3fdc;
+}
+
+/* Optional: disabled submenu items */
+#ctxMenu .submenu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Shift the 2nd submenu (cardinality) slightly to the right */
+#ctxMenu #ctxRelTypeMenu {
+  transform: translateX(60px);
+}
 
 
+
+
+/* Sandbox minimal */
 
 table {
   width: 100%;
@@ -260,7 +369,6 @@ th, td {
   padding: 6px 8px;
 }
 
-/* Sandbox minimal */
 .sandbox-container {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -481,84 +589,6 @@ th, td {
 }
 
 
-/* ==========================================
-   Cascading context menu (Add Relationship)
-   ========================================== */
-
-/* Wrapper for a menu row that owns submenus */
-#ctxMenu .menu-item {
-  position: relative;
-}
-
-/* The row’s visible button */
-#ctxMenu .submenu-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-/* Little arrow on the right */
-#ctxMenu .submenu-trigger .arrow {
-  opacity: 0.65;
-  font-size: 12px;
-}
-
-/* Submenu panel (hidden by default) */
-#ctxMenu .submenu {
-  position: absolute;
-  top: 0;
-
-  /* ✅ KEY FIX: remove the hover-gap */
-  left: 100%;            /* was: calc(100% + 6px) */
-  margin-left: 0;        /* (optional) keep at 0 to avoid any gap */
-
-  display: none;
-
-  min-width: 170px;
-  max-width: 220px;
-
-  background: #f9fbff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 4px;
-  box-shadow: 0 8px 20px rgba(0,0,0,.12);
-  z-index: 10000;
-}
-
-/* Show submenu when hovering over the parent row */
-#ctxMenu .has-submenu:hover > .submenu {
-  display: block;
-}
-
-/* Ensure submenu buttons look identical to normal ctx menu buttons */
-#ctxMenu .submenu button {
-  width: 100%;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 10px;
-  margin: 2px 0;
-  text-align: left;
-  font-size: 13px;
-  color: #222;
-  cursor: pointer;
-}
-
-#ctxMenu .submenu button:hover {
-  background: #e9f1ff;
-  color: #0b3fdc;
-}
-
-/* Optional: disabled submenu items */
-#ctxMenu .submenu button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-/* Shift the 2nd submenu (cardinality) slightly to the right */
-#ctxMenu #ctxRelTypeMenu {
-  transform: translateX(60px);
-}
 
 /* =====================================================
    Mobile + Tablet responsiveness (global)
@@ -670,3 +700,4 @@ button, select, input, textarea {
 
 #canvasWrap { touch-action: none; }
 .entity, .rel-hit, .attr-hit { touch-action: none; }
+
