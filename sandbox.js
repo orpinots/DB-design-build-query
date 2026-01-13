@@ -12,6 +12,9 @@ const DEFAULT_SCHEMAS = window.DEFAULT_SCHEMAS || [];
 const defaultQuery = window.INITIAL_DEFAULT_QUERY || '';
 
 const dbScriptInput = document.getElementById('db-script');
+dbScriptInput.addEventListener("input", () => {
+  localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value);
+});
 const queryInput = document.getElementById('query-input');
 const savedSchemasSelect = document.getElementById('saved-schemas');
 const savedQueriesSelect = document.getElementById('saved-queries');
@@ -40,12 +43,39 @@ const firstDefaultSchema = (DEFAULT_SCHEMAS && DEFAULT_SCHEMAS.length > 0)
   ? DEFAULT_SCHEMAS[0]
   : null;
 
-if (firstDefaultSchema) {
-  dbScriptInput.value = firstDefaultSchema.script;
-  queryInput.value = (window.INITIAL_DEFAULT_QUERY || firstDefaultSchema.defaultQuery || '');
+const erdSql = (typeof loadGeneratedSql === "function") ? (loadGeneratedSql() || "").trim() : "";
+const defaultSql = (firstDefaultSchema?.script || "").trim();
+const lastSql = (localStorage.getItem(SANDBOX_LAST_SQL_KEY) || "").trim();
+
+const lastIsUserEdited =
+  !!lastSql &&
+  lastSql !== erdSql &&
+  lastSql !== defaultSql;
+
+// Priority 1) keep user-edited
+if (lastIsUserEdited) {
+  dbScriptInput.value = lastSql;
+
+// Priority 2) use ERD SQL if present
+} else if (erdSql) {
+  dbScriptInput.value = erdSql;
+
+// Priority 3) use default schema
+} else if (defaultSql) {
+  dbScriptInput.value = defaultSql;
+
 } else {
-  dbScriptInput.value = '-- Add CREATE TABLE and INSERT statements here';
-  queryInput.value = '-- SELECT * FROM your_table;';
+  dbScriptInput.value = "-- Add CREATE TABLE and INSERT statements here";
+}
+
+// SEED the “last sql” key with whatever we decided to show on load
+localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value);
+
+// Query textarea default
+if (firstDefaultSchema) {
+  queryInput.value = (window.INITIAL_DEFAULT_QUERY || firstDefaultSchema.defaultQuery || "");
+} else {
+  queryInput.value = "-- SELECT * FROM your_table;";
 }
 
 loadAllSchemasList();
@@ -102,8 +132,7 @@ async function initDb() {
     const schemaScript = dbScriptInput.value.trim();
     if (!schemaScript) throw new Error("Schema script cannot be empty.");
 	localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value.trim());
-//	saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
-
+	
     const { ddl } = splitDdlAndData(schemaScript);
     const reorderedDdl = reorderDdlByForeignKeys(ddl);
     lastCreateOrder = extractCreateOrderFromDdl(reorderedDdl);
@@ -891,7 +920,6 @@ function applyEditsAndUpdateSchemaSql() {
 
     refreshDbScriptTextareaFromLiveDb();
 	localStorage.setItem(SANDBOX_LAST_SQL_KEY, dbScriptInput.value.trim());
-	// saveGeneratedArtifacts({ sql: dbScriptInput.value.trim() });
 
     populateTableList();
     generateERD();
