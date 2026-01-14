@@ -542,6 +542,14 @@ th, td {
   border-color: #f1b6b6;
 }
 
+/* =========================
+   Schema / Mermaid output boxes
+========================= */
+
+#outputBelow textarea {
+  min-height: 400px;     /* or 360px if you want it generous */
+  resize: vertical;      /* allow user to make it taller */
+}
 
 /* =========================
    Sandbox "Edit mode" preview styling
