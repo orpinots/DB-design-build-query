@@ -222,6 +222,21 @@ textarea {
   border: 1px solid var(--border);
 }
 
+.modal-content h2,
+.modal-content h3 {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.modal-content h4 {
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.modal-content table {
+  margin-top: 4px;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
