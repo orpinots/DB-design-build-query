@@ -1786,16 +1786,42 @@ function enableRelDrag(hitEl) {
     const startRelX = pos.x;
     const startRelY = pos.y;
 
+    // --- Android long-press/context suppression (same as enableDrag) ---
+    let hasMoved = false;
+    const DRAG_CANCEL_PX = 3;
+    const startClient = { x: e.clientX, y: e.clientY };
+    let didDrag = false;
+	
     try { hitEl.setPointerCapture(e.pointerId); } catch {}
 
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       ev.preventDefault();
 
+      if (!hasMoved) {
+        const dx = ev.clientX - startClient.x;
+        const dy = ev.clientY - startClient.y;
+        if (Math.hypot(dx, dy) >= DRAG_CANCEL_PX) {
+          hasMoved = true;
+
+          // Cancel any pending long-press context menu
+          if (cancelActiveLongPress) cancelActiveLongPress();
+
+          // Suppress context menu briefly after drag ends (Android)
+          suppressContextUntil = Date.now() + 800;
+        }
+      }
+
       const currWorld = eventToWorld(ev);
 
       const newX = startRelX + (currWorld.x - startWorld.x);
       const newY = startRelY + (currWorld.y - startWorld.y);
+
+      // markDrag once real movement happens
+      if (!didDrag && (Math.abs(newX - startRelX) + Math.abs(newY - startRelY)) >= 2) {
+        didDrag = true;
+        markDrag();
+      }
 
       rel.x = newX;
       rel.y = newY;
