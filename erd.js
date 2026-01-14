@@ -109,6 +109,10 @@ let _lastDragTs = 0;
 // --- Touch detection for suppressing native contextmenu ---
 let _lastTouchLikeTs = 0;
 
+let suppressContextUntil = 0;           // timestamp (ms)
+let cancelActiveLongPress = null;       // function set by enableContext
+
+
 function markTouchLike() {
   _lastTouchLikeTs = Date.now();
 }
@@ -1673,6 +1677,10 @@ function enableDrag(el) {
     const startWorld = eventToWorld(e);
     const startEntX = ent.x;
     const startEntY = ent.y;
+	
+	let hasMoved = false;
+	const DRAG_CANCEL_PX = 3; // small threshold works best on Android
+	const startClient = { x: e.clientX, y: e.clientY };
 
     // ✅ ADD: track whether we've *actually* dragged
     let didDrag = false;
@@ -1684,6 +1692,20 @@ function enableDrag(el) {
       if (ev.pointerId !== e.pointerId) return;
       ev.preventDefault();
 
+	  if (!hasMoved) {
+	    const dx = ev.clientX - startClient.x;
+	    const dy = ev.clientY - startClient.y;
+	    if (Math.hypot(dx, dy) >= DRAG_CANCEL_PX) {
+	      hasMoved = true;
+
+	      // Cancel any long-press menu that might be pending
+	      if (cancelActiveLongPress) cancelActiveLongPress();
+
+	      // Also suppress context menu for a short window after drag ends
+	      suppressContextUntil = Date.now() + 800;
+	    }
+	  }
+	  
       const currWorld = eventToWorld(ev);
 
       // Move entity in WORLD coords
@@ -1939,6 +1961,7 @@ function enableContext(el) {
       e.preventDefault();
       return;
     }
+	if (Date.now() < suppressContextUntil) return;
     e.preventDefault();
     ctxEntityId = el.dataset.id;
     openEntityCtxMenuAtPageXY(e.pageX, e.pageY);
@@ -1955,11 +1978,16 @@ function enableContext(el) {
   let pressTimer = null;
   let startClient = null;
   let moved = false;
+  
+  function cancelLongPress() {
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null;
+  }
 
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
 	e.preventDefault();  // IMPORTANT: suppress native long-press behaviors
-
+	el.oncontextmenu = (ev) => ev.preventDefault();
     moved = false;
     startClient = clientPointFromEvent(e);
     ctxEntityId = el.dataset.id;
@@ -1968,9 +1996,12 @@ function enableContext(el) {
     // (your drag code uses touch-action:none and pointer capture, so this is safe)
     pressTimer = setTimeout(() => {
       if (moved) return;
+	  if (Date.now() < suppressContextUntil) return;
       const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
       openEntityCtxMenuAtPageXY(pt.x, pt.y);
     }, 550);
+	cancelActiveLongPress = cancelLongPress;
+	
   }, { passive: true });
 
   el.addEventListener("pointermove", (e) => {
@@ -1991,11 +2022,13 @@ function enableContext(el) {
   el.addEventListener("pointerup", () => {
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = null;
+	cancelActiveLongPress = null;
   });
 
   el.addEventListener("pointercancel", () => {
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = null;
+	cancelActiveLongPress = null;
   });
 }
 
