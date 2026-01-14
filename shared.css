@@ -10,6 +10,49 @@
   --border: #d8d8d8;
 }
 
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* nav and toolbar should size to content */
+.nav, #toolbar {
+  flex: 0 0 auto;
+}
+
+/* this becomes the "remaining space" region */
+#layout {
+  flex: 1 1 auto;
+  min-height: 0;          /* critical */
+  display: flex;          /* critical */
+  flex-direction: column; /* so canvasWrap can flex */
+}
+
+/* canvas fills #layout */
+#canvasWrap {
+  flex: 1 1 auto;
+  min-height: 500px;      /* your floor */
+  position: relative;
+  width: 100%;
+
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+
+
+
+
 /* ---------- Copyright badge ---------- */
 .copyright-badge {
   position: fixed;
@@ -26,12 +69,6 @@
 }
 
 
-body {
-  margin: 16px;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  color: var(--fg);
-  background: var(--bg);
-}
 
 h1, h2 { margin: 0 0 12px 0; }
 hr { margin: 24px 0; }
@@ -88,18 +125,26 @@ textarea {
   font-size: 12.5px;
 }
 
-/* Canvas */
-#layout { margin-top: 12px; }
 
-#canvasWrap {
-  position: relative;
-  width: 100%;
-  height: calc(100vh - 140px);  /* adjust once if needed */
-  min-height: 800px;            /* optional safety floor */
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
+/* Pan/zoom gestures should be handled by JS, not browser scrolling */
+#canvasWrap, #erdStage {
+  touch-action: none;
 }
+
+
+/* Stage that gets transformed */
+#erdStage {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+/* Ensure relationship/oval SVG primitives are not clipped by the SVG viewport */
+#erdStage svg {
+  overflow: visible !important;
+}
+
+
 
 #svgLayer,
 #svgLayer svg,
@@ -128,28 +173,6 @@ textarea {
   cursor: move;
   background: transparent;
 }
-
-/* Pan/zoom gestures should be handled by JS, not browser scrolling */
-#canvasWrap, #erdStage {
-  touch-action: none;
-}
-
-#canvasWrap {
-  overscroll-behavior: contain;
-}
-
-/* Stage that gets transformed */
-#erdStage {
-  position: absolute;
-  inset: 0;
-  transform-origin: 0 0;
-}
-
-/* Ensure relationship/oval SVG primitives are not clipped by the SVG viewport */
-#erdStage svg {
-  overflow: visible !important;
-}
-
 
 
 /* ---------- Context menus (refined) ---------- */
@@ -644,13 +667,6 @@ button, select, input, textarea {
   gap: 8px 10px;
 }
 
-/* ---------- Responsive canvas sizing ---------- */
-/* Desktop baseline still fine; improve on smaller viewports via media queries below */
-#canvasWrap {
-  height: 70vh;          /* replaces the "always 520px" feel on variable screens */
-  min-height: 360px;     /* still usable on desktop */
-  max-height: 820px;     /* prevents ridiculously tall canvas on huge screens */
-}
 
 /* Keep SVG from being hijacked by browser gestures when we later add touch dragging */
 #svgLayer {
@@ -684,12 +700,6 @@ button, select, input, textarea {
     border-radius: 10px;
   }
 
-  /* Give the canvas more room on smaller screens */
-  #canvasWrap {
-    height: 72vh;
-    min-height: 320px;
-  }
-
   /* Modal should fit comfortably */
   .modal-content {
     margin: 14px auto;
@@ -706,12 +716,6 @@ button, select, input, textarea {
   h1 {
     font-size: 20px;
     margin-bottom: 8px;
-  }
-
-  /* Make canvas as big as possible */
-  #canvasWrap {
-    height: 74vh;
-    min-height: 280px;
   }
 
   /* Tables can overflow horizontally — allow scroll */
@@ -731,6 +735,5 @@ button, select, input, textarea {
   }
 }
 
-#canvasWrap { touch-action: none; }
 .entity, .rel-hit, .attr-hit { touch-action: none; }
 
