@@ -1,4 +1,3 @@
-
 // IMPORTANT: erd-presets.js must be ed before erd.js
 const ERD_PRESETS = window.ERD_PRESETS || {};
 
@@ -54,16 +53,121 @@ function clearCurrentErdState() {
 }
 
 
+
+let svg  = document.getElementById("svgLayer"); // changed to let, because we may move it
+const svgNS = "http://www.w3.org/2000/svg";
+
+
 // Use the 4-way as the default
 // let erd = cloneErd(ERD_PRESETS.fourWay.data);
 
 // Use the 4-way as the default *fallback*, but prefer the last in-progress ERD
 let erd = loadCurrentErdState() || cloneErd(ERD_PRESETS.fourWay.data);
 
+// =========================
+// Mouse-drag panning (background)
+// =========================
 
 const wrap = document.getElementById("canvasWrap");
-let svg  = document.getElementById("svgLayer"); // changed to let, because we may move it
-const svgNS = "http://www.w3.org/2000/svg";
+
+wrap.addEventListener("wheel", (e) => {
+  // Zoom when Ctrl/Cmd held (trackpad pinch often comes as ctrlKey)
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const zoomFactor = Math.exp(-e.deltaY * 0.002);
+    zoomAtScreenPoint(viewScale * zoomFactor, sx, sy);
+    return;
+  }
+
+  // Otherwise: trackpad two-finger scroll pans the canvas
+  e.preventDefault();
+  viewPanX -= e.deltaX;
+  viewPanY -= e.deltaY;
+  applyViewTransform();
+}, { passive: false });
+
+
+let isMousePanning = false;
+let panStart = { x: 0, y: 0 };
+let panStartView = { x: 0, y: 0 };
+
+let _scrollLockCount = 0;
+
+function lockPageScroll() {
+  _scrollLockCount++;
+  if (_scrollLockCount === 1) {
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+  }
+}
+
+function unlockPageScroll() {
+  _scrollLockCount = Math.max(0, _scrollLockCount - 1);
+  if (_scrollLockCount === 0) {
+    document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
+  }
+}
+
+function isPanBackgroundTarget(t) {
+  if (!t) return true;
+
+  // Don't pan when starting on draggable ERD objects / UI
+  if (t.closest?.(".entity")) return false;
+  if (t.closest?.(".rel-hit")) return false;
+  if (t.closest?.(".attr-hit")) return false;
+  if (t.closest?.("#ctxMenu")) return false;
+  if (t.closest?.("#relCtxMenu")) return false;
+  if (t.closest?.(".modal")) return false;
+
+  return true; // empty canvas / svg / stage
+}
+
+wrap.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "mouse") return;
+  if (e.button !== 0) return;                 // left button only
+  if (!isPanBackgroundTarget(e.target)) return;
+
+  // Don't start mouse-pan if a two-finger gesture is active
+  if (activePtrs && activePtrs.size >= 2) return;
+
+  e.preventDefault();
+
+  isMousePanning = true;
+  panStart = { x: e.clientX, y: e.clientY };
+  panStartView = { x: viewPanX, y: viewPanY };
+
+  try { wrap.setPointerCapture(e.pointerId); } catch {}
+}, { passive: false, capture: true });
+
+wrap.addEventListener("pointermove", (e) => {
+  if (!isMousePanning) return;
+  if (e.pointerType !== "mouse") return;
+
+  e.preventDefault();
+
+  const dx = e.clientX - panStart.x;
+  const dy = e.clientY - panStart.y;
+
+  viewPanX = panStartView.x + dx;
+  viewPanY = panStartView.y + dy;
+  clampPanToContent();
+  applyViewTransform();
+}, { passive: false, capture: true });
+
+function endMousePan(e) {
+  if (e && e.pointerType === "mouse") {
+    try { wrap.releasePointerCapture(e.pointerId); } catch {}
+  }
+  isMousePanning = false;
+}
+
+wrap.addEventListener("pointerup", endMousePan, { capture: true });
+wrap.addEventListener("pointercancel", endMousePan, { capture: true });
+
 
 let stage = null;
 
@@ -86,6 +190,79 @@ function applyViewTransform() {
   stage.style.transform = `translate(${viewPanX}px, ${viewPanY}px) scale(${viewScale})`;
 }
 
+function getContentWorldBounds() {
+  const ents = (erd && erd.entities) ? erd.entities : [];
+  if (!ents.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  for (const ent of ents) {
+    const x = ent.x || 0;
+    const y = ent.y || 0;
+    const w = ent.width  || 140;
+    const h = ent.height || 60;
+
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
+
+    // Include pinned attribute ovals if present
+    const attrs = ent.attributes || [];
+    for (const a of attrs) {
+      if (typeof a.ovalX === "number" && typeof a.ovalY === "number") {
+        // Conservative oval extents (rx depends on label length, but this works well)
+        const rx = 90;
+        const ry = 22;
+        minX = Math.min(minX, a.ovalX - rx);
+        maxX = Math.max(maxX, a.ovalX + rx);
+        minY = Math.min(minY, a.ovalY - ry);
+        maxY = Math.max(maxY, a.ovalY + ry);
+      }
+    }
+  }
+
+  // Fallback safety
+  if (!Number.isFinite(minX)) minX = minY = maxX = maxY = 0;
+  return { minX, minY, maxX, maxY };
+}
+
+function clampPanToContent() {
+  if (!wrap) return;
+
+  const vw = wrap.clientWidth;
+  const vh = wrap.clientHeight;
+
+  const PAD = 80; // visible breathing room around content (tweak: 40–140)
+
+  const { minX, minY, maxX, maxY } = getContentWorldBounds();
+
+  const contentW = (maxX - minX);
+  const contentH = (maxY - minY);
+
+  const scaledW = contentW * viewScale;
+  const scaledH = contentH * viewScale;
+
+  // If content is smaller than viewport, center it (with padding ignored)
+  if (scaledW + 2 * PAD <= vw) {
+    viewPanX = (vw - scaledW) / 2 - minX * viewScale;
+  } else {
+    // Clamp so you can’t pan content completely out of view
+    const minPanX = vw - (maxX * viewScale) - PAD; // farthest left
+    const maxPanX = -(minX * viewScale) + PAD;     // farthest right
+    viewPanX = clamp(viewPanX, minPanX, maxPanX);
+  }
+
+  if (scaledH + 2 * PAD <= vh) {
+    viewPanY = (vh - scaledH) / 2 - minY * viewScale;
+  } else {
+    const minPanY = vh - (maxY * viewScale) - PAD; // farthest up
+    const maxPanY = -(minY * viewScale) + PAD;     // farthest down
+    viewPanY = clamp(viewPanY, minPanY, maxPanY);
+  }
+}
+
+
 // Create a transform stage that will contain BOTH svg + entity divs
 (function initStage() {
   // If already created, do nothing
@@ -103,11 +280,20 @@ function applyViewTransform() {
   }
   stage.appendChild(svg);
 
+  // ✅ Critical: allow lines/ovals to render outside the SVG viewport
+  svg.style.overflow = "visible";
+  svg.setAttribute("overflow", "visible");
+
+  // Put stage into canvasWrap
+  wrap.appendChild(stage);
   // Put stage into canvasWrap
   wrap.appendChild(stage);
 
   // start with identity transform
   applyViewTransform();
+  stage.style.transformOrigin = "0 0";
+  setTouchActionNone(wrap);
+  if (stage) setTouchActionNone(stage);
 })();
 
 
@@ -139,6 +325,7 @@ function zoomAtScreenPoint(newScale, sx, sy) {
   // keep `before` pinned under (sx,sy)
   viewPanX = sx - before.x * viewScale;
   viewPanY = sy - before.y * viewScale;
+  clampPanToContent();
   applyViewTransform();
 }
 
@@ -182,6 +369,7 @@ function onWrapPointerDown(ev) {
 
   if (activePtrs.size === 2) {
     ev.preventDefault(); // key
+    lockPageScroll();              // <-- add
     gestureMode = "panzoom";
 
     const pts = [...activePtrs.values()];
@@ -237,6 +425,7 @@ function onWrapPointerUp(ev) {
 
   if (activePtrs.size < 2) {
     gestureMode = null;
+    unlockPageScroll();            // <-- add
   }
 }
 
@@ -2009,112 +2198,7 @@ function makeModalDraggable(modal) {
   });
 }
 
-function wirePanZoom() {
-  const canvas = document.getElementById("canvasWrap");
-  if (!canvas) return;
 
-  const pointers = new Map();
-  let pinchStartDist = 0;
-  let pinchStartScale = 1;
-  let pinchStartMid = { x: 0, y: 0 };
-
-  function dist(a, b) {
-    const dx = a.x - b.x, dy = a.y - b.y;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-  function midpoint(a, b) {
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  }
-  function getScreenPointFromEvent(ev) {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
-  }
-
-  function onPointerDown(e) {
-	// Gesture classification happens at pointerdown; touching these events
-	// will prevent the browser from ever firing `contextmenu`.
-	if (e.button === 2 || (e.ctrlKey && e.pointerType === "mouse")) return;	
-	if (e.pointerType === "mouse" && e.button !== 0) return;    // capture-phase: we see this even if entity handlers stopPropagation
-    pointers.set(e.pointerId, getScreenPointFromEvent(e));
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
-
-    if (pointers.size === 2) {
-      // When pinch begins, prevent browser actions and initialize baseline
-      e.preventDefault();
-
-      const pts = Array.from(pointers.values());
-      pinchStartDist = dist(pts[0], pts[1]);
-      pinchStartScale = viewScale;
-      pinchStartMid = midpoint(pts[0], pts[1]);
-    }
-  }
-
-  function onPointerMove(e) {
-    if (!pointers.has(e.pointerId)) return;
-
-    pointers.set(e.pointerId, getScreenPointFromEvent(e));
-
-    if (pointers.size === 2) {
-      e.preventDefault();
-
-      const pts = Array.from(pointers.values());
-      const mid = midpoint(pts[0], pts[1]);
-      const d = dist(pts[0], pts[1]);
-      if (pinchStartDist <= 0) return;
-
-      const scaleFactor = d / pinchStartDist;
-      const newScale = clamp(pinchStartScale * scaleFactor, MIN_SCALE, MAX_SCALE);
-
-      // Keep world point under pinchStartMid pinned, then pan by midpoint delta
-      const pinnedWorld = screenToWorld(pinchStartMid.x, pinchStartMid.y);
-
-      viewScale = newScale;
-      viewPanX = pinchStartMid.x - pinnedWorld.x * viewScale;
-      viewPanY = pinchStartMid.y - pinnedWorld.y * viewScale;
-
-      viewPanX += (mid.x - pinchStartMid.x);
-      viewPanY += (mid.y - pinchStartMid.y);
-
-      applyViewTransform();
-    }
-  }
-
-  function onPointerUp(e) {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinchStartDist = 0;
-  }
-
-  // ✅ CAPTURE PHASE is the key change
-  canvas.addEventListener("pointerdown", onPointerDown, { passive: false, capture: true });
-  canvas.addEventListener("pointermove", onPointerMove, { passive: false, capture: true });
-  canvas.addEventListener("pointerup", onPointerUp, { capture: true });
-  canvas.addEventListener("pointercancel", onPointerUp, { capture: true });
-
-  // Wheel zoom stays the same
-  canvas.addEventListener("wheel", (e) => {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    const delta = -e.deltaY;
-    const zoomStep = delta > 0 ? 1.08 : 1 / 1.08;
-    zoomAtScreenPoint(viewScale * zoomStep, sx, sy);
-  }, { passive: false });
-}
-
-
-document.addEventListener("pointerdown", e => {
-  if (!ctxMenu.contains(e.target)) ctxMenu.style.display = "none";
-  if (!relCtxMenu.contains(e.target)) relCtxMenu.style.display = "none";
-});
-
-
-
-
-//  Entity menu actions */
 //  Entity menu actions */
 ctxMenu.addEventListener("click", e => {
   // If clicking a submenu item, handle that first
@@ -3742,5 +3826,4 @@ ${escaped}
 //  ---------- Init ---------- */
 makeModalDraggable(entityModal);
 makeModalDraggable(relModal);
-wirePanZoom();
 render();

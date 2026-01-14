@@ -101,9 +101,10 @@ textarea {
   overflow: hidden;
 }
 
-#svgLayer {
-  position: absolute;
-  inset: 0;
+#svgLayer,
+#svgLayer svg,
+#erdStage svg {
+  overflow: visible !important;
 }
 
 .entity {
@@ -143,6 +144,12 @@ textarea {
   inset: 0;
   transform-origin: 0 0;
 }
+
+/* Ensure relationship/oval SVG primitives are not clipped by the SVG viewport */
+#erdStage svg {
+  overflow: visible !important;
+}
+
 
 
 /* ---------- Context menus (refined) ---------- */
