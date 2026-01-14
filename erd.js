@@ -2199,6 +2199,9 @@ function openEntityCtxMenuAtPageXY(pageX, pageY) {
 
 function enableRelContext(el) {
   el.oncontextmenu = e => {
+    // ✅ if we just dragged, ignore the context menu event (Android can fire it late)
+    if (typeof shouldSuppressContextMenu === "function" && shouldSuppressContextMenu()) return;
+
     e.preventDefault();
     ctxRelId = el.dataset.rid;
     showRelCtxMenu(e.pageX, e.pageY);
@@ -2217,19 +2220,37 @@ function enableRelContext(el) {
 
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
-	e.preventDefault();  // IMPORTANT: suppress native long-press behaviors
+
+    // ✅ If we just dragged, do not even start a long-press timer
+    if (typeof shouldSuppressContextMenu === "function" && shouldSuppressContextMenu()) return;
+
+    // ✅ MUST be allowed to preventDefault on Android, so this listener cannot be passive
+    e.preventDefault();
 
     moved = false;
     startClient = clientPointFromEvent(e);
     ctxRelId = el.dataset.rid;
 
+    // ✅ Allow enableRelDrag() (and others) to cancel this exact timer.
+    cancelActiveLongPress = () => {
+      if (pressTimer) clearTimeout(pressTimer);
+      pressTimer = null;
+      moved = true;
+    };
+
     pressTimer = setTimeout(() => {
       if (moved) return;
+
+      // ✅ One more guard right before showing (covers late Android events)
+      if (typeof shouldSuppressContextMenu === "function" && shouldSuppressContextMenu()) return;
+
       const pt = pagePointFromClient(startClient.clientX, startClient.clientY);
       showRelCtxMenu(pt.x, pt.y);
     }, 550);
-  }, { passive: true });
 
+  }, { passive: false }); // ✅ CRITICAL CHANGE
+  
+  
   el.addEventListener("pointermove", (e) => {
     if (!pressTimer || e.pointerType !== "touch") return;
 
@@ -2242,21 +2263,26 @@ function enableRelContext(el) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
-  }, { passive: true });
+  }, { passive: false });
 
   el.addEventListener("pointerup", () => {
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = null;
+    if (cancelActiveLongPress) cancelActiveLongPress = null;
   });
 
   el.addEventListener("pointercancel", () => {
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = null;
+    if (cancelActiveLongPress) cancelActiveLongPress = null;
   });
 }
 
 
 function showRelCtxMenu(x,y){
+  // ✅ Final safety net (prevents *any* path from showing after a drag)
+  if (typeof shouldSuppressContextMenu === "function" && shouldSuppressContextMenu()) return;
+
   relCtxMenu.style.left  = x + "px";
   relCtxMenu.style.top   = y + "px";
   relCtxMenu.style.display = "block";
