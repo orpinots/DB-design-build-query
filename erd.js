@@ -89,6 +89,14 @@ wrap.addEventListener("wheel", (e) => {
   applyViewTransform();
 }, { passive: false });
 
+// Track last input type so we can ignore touch "contextmenu" (long-press)
+let lastPointerType = "mouse";
+
+document.addEventListener("pointerdown", (e) => {
+  lastPointerType = e.pointerType || "mouse";
+}, { capture: true });
+
+
 
 let isMousePanning = false;
 let panStart = { x: 0, y: 0 };
@@ -1874,10 +1882,14 @@ function enableRelAttrDrag(hitEl) {
 }
 
 //  ---------- Context menus ---------- */
-//  ---------- Context menus ---------- */
-function enableContext(el) {
-  // Desktop right-click still works
+function enableContext(el) {  
   el.oncontextmenu = (e) => {
+    // Touch long-press can generate a contextmenu event.
+    // We only want right-click context menus from a mouse.
+    if (lastPointerType !== "mouse") {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     ctxEntityId = el.dataset.id;
     openEntityCtxMenuAtPageXY(e.pageX, e.pageY);
