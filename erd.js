@@ -1805,7 +1805,7 @@ function enableRelDrag(hitEl) {
           hasMoved = true;
 
           // Cancel any pending long-press context menu
-          if (cancelActiveLongPress) cancelActiveLongPress();
+		  if (typeof cancelActiveLongPress === "function") cancelActiveLongPress();
 
           // Suppress context menu briefly after drag ends (Android)
           suppressContextUntil = Date.now() + 800;
@@ -1820,7 +1820,7 @@ function enableRelDrag(hitEl) {
       // markDrag once real movement happens
       if (!didDrag && (Math.abs(newX - startRelX) + Math.abs(newY - startRelY)) >= 2) {
         didDrag = true;
-        markDrag();
+		if (typeof markDrag === "function") markDrag();
       }
 
       rel.x = newX;
@@ -1845,6 +1845,7 @@ function enableRelDrag(hitEl) {
 
     const onUp = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
+	  if (didDrag) suppressContextUntil = Date.now() + 800;
       document.removeEventListener("pointermove", onMove, { passive: false });
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
