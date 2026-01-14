@@ -128,8 +128,8 @@ window.addEventListener("touchstart", () => {
 
 // Kill the browser's native long-press contextmenu on touch
 window.addEventListener("contextmenu", (e) => {
-  // iOS Safari often doesn't provide pointerType here; this heuristic works well.
-  if (isRecentTouchLike()) {
+  // Android can fire contextmenu after touch-drag; kill it if we touched OR dragged recently.
+  if (isRecentTouchLike() || isRecentDrag()) {
     e.preventDefault();
     e.stopPropagation();
   }
