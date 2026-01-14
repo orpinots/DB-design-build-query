@@ -104,6 +104,46 @@ let panStartView = { x: 0, y: 0 };
 
 let _scrollLockCount = 0;
 
+let _lastDragTs = 0;
+
+// --- Touch detection for suppressing native contextmenu ---
+let _lastTouchLikeTs = 0;
+
+function markTouchLike() {
+  _lastTouchLikeTs = Date.now();
+}
+
+function isRecentTouchLike(ms = 1200) {
+  return (Date.now() - _lastTouchLikeTs) < ms;
+}
+
+// Mark touch/pointer activity (capture so we see it early)
+window.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") markTouchLike();
+}, { capture: true });
+
+window.addEventListener("touchstart", () => {
+  markTouchLike();
+}, { capture: true, passive: true });
+
+// Kill the browser's native long-press contextmenu on touch
+window.addEventListener("contextmenu", (e) => {
+  // iOS Safari often doesn't provide pointerType here; this heuristic works well.
+  if (isRecentTouchLike()) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, { capture: true });
+
+
+function markDrag() {
+  _lastDragTs = Date.now();
+}
+
+function isRecentDrag(ms = 1200) {
+  return (Date.now() - _lastDragTs) < ms;
+}
+
 function lockPageScroll() {
   _scrollLockCount++;
   if (_scrollLockCount === 1) {
@@ -1885,8 +1925,8 @@ function enableRelAttrDrag(hitEl) {
 function enableContext(el) {  
   el.oncontextmenu = (e) => {
     // Touch long-press can generate a contextmenu event.
-    // We only want right-click context menus from a mouse.
-    if (lastPointerType !== "mouse") {
+    // If this came from touch/long-press, ignore (we handle touch via our timer)
+    if (isRecentTouchLike()) {
       e.preventDefault();
       return;
     }
