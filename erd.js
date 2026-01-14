@@ -1674,6 +1674,9 @@ function enableDrag(el) {
     const startEntX = ent.x;
     const startEntY = ent.y;
 
+    // ✅ ADD: track whether we've *actually* dragged
+    let didDrag = false;
+
     // capture pointer so dragging keeps working if finger leaves element
     try { el.setPointerCapture(e.pointerId); } catch {}
 
@@ -1689,6 +1692,12 @@ function enableDrag(el) {
 
       const dx = newX - ent.x;
       const dy = newY - ent.y;
+
+      // ✅ ADD: only once, once movement is real, mark it as a drag (Android contextmenu killer)
+      if (!didDrag && (Math.abs(dx) + Math.abs(dy)) >= 2) {
+        didDrag = true;
+        markDrag(); // sets _lastDragTs
+      }
 
       ent.x = newX;
       ent.y = newY;
