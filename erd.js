@@ -1909,6 +1909,7 @@ function enableContext(el) {
 
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
+	e.preventDefault();  // IMPORTANT: suppress native long-press behaviors
 
     moved = false;
     startClient = clientPointFromEvent(e);
@@ -1925,7 +1926,8 @@ function enableContext(el) {
 
   el.addEventListener("pointermove", (e) => {
     if (!pressTimer || e.pointerType !== "touch") return;
-
+	e.preventDefault();  // IMPORTANT: suppress native long-press behaviors
+	
     const p = clientPointFromEvent(e);
     const dx = p.clientX - startClient.clientX;
     const dy = p.clientY - startClient.clientY;
@@ -2106,6 +2108,7 @@ function enableRelContext(el) {
 
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
+	e.preventDefault();  // IMPORTANT: suppress native long-press behaviors
 
     moved = false;
     startClient = clientPointFromEvent(e);
