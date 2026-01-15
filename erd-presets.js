@@ -97,17 +97,17 @@ window.ERD_PRESETS = {
           }
         ],
 
-        relationships: [
-          // Coach coaches Team (typical: one coach -> many teams)
-          {
-            id: "rCoaches",
-            name: "coaches",
-            type: "1:N",
-            a: "coach",
-            b: "team",
-            optA: false,
-            optB: true
-          },
+        relationships: [		 
+		  // Coach coaches Team (history: many-to-many)
+		  {
+		    id: "rCoaches",
+		    name: "coaches",
+		    type: "N:N",
+		    a: "coach",
+		    b: "team",
+		    optA: true,   // a coach may coach zero teams (e.g., unemployed/retired)
+		    optB: true    // a team may temporarily have no coach (vacancy)
+		  },
 
           // Team has Manager (often 1:1; manager optional on the manager side)
           {
