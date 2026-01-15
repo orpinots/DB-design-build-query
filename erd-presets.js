@@ -6,43 +6,183 @@
 
 // All sample ERDs live here
 window.ERD_PRESETS = {
-  // Simple 3 entities with 2 relationships 
-  twoBinary: {
-    label: "Student–Registration–Course (binary)",
-    data: {
-      entities: [
-        { id:"student", name:"Student", x:60,  y:180, attributes:[
-          { name:"SSN", pk:true }, { name:"Name", pk:false }
-        ]},
-        { id:"registration", name:"Registration", x:360,y:180, attributes:[
-          { name:"SSN", pk:true }, { name:"CRN", pk:true }
-        ]},
-        { id:"course", name:"Course", x:660,y:180, attributes:[
-          { name:"CRN", pk:true }, { name:"CourseName", pk:false }
-        ]}
-      ],
-      relationships: [
-        {
-          id: "r1",
-          name: "signsup",
-          type: "1:N",
-          a: "student",
-          b: "registration",
-          optA: false,
-          optB: true
-        },
-        {
-          id: "r2",
-          name: "has",
-          type: "1:N",
-          a: "course",
-          b: "registration",
-          optA: false,
-          optB: true
-        }
-      ]
-    }
-  },
+    // Sports League ERD (weak entities + identifying rels + home/away roles)
+    sportsLeague: {
+      label: "Sports League (Teams–Players–Matches)",
+      data: {
+        entities: [
+          {
+            id: "coach",
+            name: "Coach",
+            x: 80,
+            y: 140,
+            attributes: [
+              { name: "CoachID", pk: true },
+              { name: "CoachName", pk: false }
+            ]
+          },
+          {
+            id: "team",
+            name: "Team",
+            x: 420,
+            y: 170,
+            attributes: [
+              { name: "TeamID", pk: true },
+              { name: "TeamName", pk: false }
+            ]
+          },
+          {
+            id: "manager",
+            name: "Manager",
+            x: 820,
+            y: 70,
+            attributes: [
+              { name: "ManagerID", pk: true },
+              { name: "ManagerName", pk: false }
+            ]
+          },
+
+          // Weak entity: Player (identified by Team + Number)
+          {
+            id: "player",
+            name: "Player",
+            x: 850,
+            y: 240,
+            isWeak: true,
+            attributes: [
+              { name: "TeamID", pk: true, fk: true }, // owner key (borrowed)
+              { name: "Number", pk: true },           // discriminator
+              { name: "PlayerName", pk: false }
+            ]
+          },
+
+          {
+            id: "agent",
+            name: "Agent",
+            x: 840,
+            y: 440,
+            attributes: [
+              { name: "AgentID", pk: true },
+              { name: "AgentName", pk: false }
+            ]
+          },
+
+          {
+            id: "field",
+            name: "Field",
+            x: 120,
+            y: 470,
+            attributes: [
+              { name: "FieldID", pk: true },
+              { name: "Address", pk: false },
+              { name: "ContactPhone", pk: false },
+              { name: "ContactPerson", pk: false }
+            ]
+          },
+
+          // Weak entity: Match (identified by HomeTeam + AwayTeam + MatchDate)
+          {
+            id: "match",
+            name: "Match",
+            x: 470,
+            y: 420,
+            isWeak: true,
+            attributes: [
+              { name: "HomeTeamID", pk: true, fk: true },
+              { name: "AwayTeamID", pk: true, fk: true },
+              { name: "MatchDate", pk: true },
+              { name: "Time", pk: false },
+              { name: "FieldID", pk: false, fk: true } // non-identifying FK
+            ]
+          }
+        ],
+
+        relationships: [
+          // Coach coaches Team (typical: one coach -> many teams)
+          {
+            id: "rCoaches",
+            name: "coaches",
+            type: "1:N",
+            a: "coach",
+            b: "team",
+            optA: false,
+            optB: true
+          },
+
+          // Team has Manager (often 1:1; manager optional on the manager side)
+          {
+            id: "rHasManager",
+            name: "has",
+            type: "1:1",
+            a: "team",
+            b: "manager",
+            optA: false,
+            optB: true
+          },
+
+          // Identifying: Team has Player (weak)
+          {
+            id: "rHasPlayer",
+            name: "has",
+            type: "1:N",
+            a: "team",
+            b: "player",
+            optA: false,
+            optB: false,
+            identifying: true,
+            parentSide: "a"
+          },
+
+          // Agent has Player (typical: one agent -> many players)
+          {
+            id: "rHasAgent",
+            name: "has",
+            type: "1:N",
+            a: "agent",
+            b: "player",
+            optA: false,
+            optB: true
+          },
+
+          // Field at Match (typical: one field -> many matches)
+          {
+            id: "rAtField",
+            name: "at",
+            type: "1:N",
+            a: "field",
+            b: "match",
+            optA: false,
+            optB: true
+          },
+
+          // Identifying: Team is home team for Match (weak)
+          {
+            id: "rHome",
+            name: "home",
+            type: "1:N",
+            a: "team",
+            b: "match",
+            optA: false,
+            optB: false,
+            identifying: true,
+            parentSide: "a"
+          },
+
+          // Identifying: Team is away team for Match (weak)
+          {
+            id: "rAway",
+            name: "away",
+            type: "1:N",
+            a: "team",
+            b: "match",
+            optA: false,
+            optB: false,
+            identifying: true,
+            parentSide: "a"
+          }
+        ]
+      }
+    },
   fourWay: {
     label: "4-Way Registration (default)",
     data: {
