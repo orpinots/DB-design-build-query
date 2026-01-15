@@ -2884,6 +2884,14 @@ function openRelModal(rel) {
     (specializationExtras.length === 0) &&
     !isUnary; // optional: you can allow unary later, but keep it simple now	
 
+  // Which side should be treated as "weak" if identifying is enabled?
+  // If already identifying: weak side is the opposite of parentSide.
+  // Else default to the side whose entity is currently marked weak (from the Add Weak Entity flow).
+  // Else fall back to B.
+  const weakSideChoice = rel.identifying
+    ? (rel.parentSide === "a" ? "b" : "a")
+    : (weakSide || "b");
+	
   const supportsRoleLabels = (extras.length === 0) && (specializationExtras.length === 0);
 
   const availableOthers = erd.entities
@@ -2994,18 +3002,35 @@ function openRelModal(rel) {
         </div>
       </div>
     </div>
-	${canShowIdentifying ? `
-	  <div class="rel-section">
-	    <h4>Weak entity key</h4>
-		<label style="display:block; margin-top:6px;">
-		  <input type="checkbox" id="relIdentifying" ${rel.identifying ? "checked" : ""}>
-		  Make identifying (parent key becomes part of weak entity PK)
-	    </label>
-	    <div style="font-size:12px; color:#555; margin-top:4px;">
-	      When enabled, the weak side is forced to be “Many” and “NOT optional”.
-		</div>
-	  </div>
-	` : ``}
+			
+    ${canShowIdentifying ? `
+      <div class="rel-section">
+        <h4>Weak entity key</h4>
+
+        <label style="display:block; margin-top:6px;">
+          <input type="checkbox" id="relIdentifying" ${rel.identifying ? "checked" : ""}>
+          Identifying relationship (weak entity)
+        </label>
+
+        <div id="relIdentifyingDetails"
+             style="margin-top:8px; padding-left:18px; ${rel.identifying ? "" : "display:none;"}">
+
+          <div style="font-size:12px; color:#555; margin-bottom:6px;">
+            Choose which side is the <strong>weak</strong> entity (its PK will include the parent key(s)).
+          </div>
+
+          <label style="display:block; margin-bottom:4px;">
+            <input type="radio" name="relWeakSide" value="a" ${weakSideChoice === "a" ? "checked" : ""}>
+            Weak side: ${entA.name}
+          </label>
+
+          <label style="display:block;">
+            <input type="radio" name="relWeakSide" value="b" ${weakSideChoice === "b" ? "checked" : ""}>
+            Weak side: ${entB.name}
+          </label>
+        </div>
+      </div>
+    ` : ``}
 
     <div class="rel-section">
       <h4>Relationship Attributes</h4>
@@ -3060,6 +3085,16 @@ function openRelModal(rel) {
       </div>
     </div>
   `;
+
+  // --- Identifying UI show/hide ---
+  const identEl = document.getElementById("relIdentifying");
+  const identDetailsEl = document.getElementById("relIdentifyingDetails");
+  if (identEl && identDetailsEl) {
+    identEl.addEventListener("change", () => {
+      identDetailsEl.style.display = identEl.checked ? "block" : "none";
+      refreshSpecializationEnableState(); // keep mutual-exclusion logic correct
+    });
+  }
 
   // --- wire up attribute add/delete ---
   const relAttrBodyEl = relSidesPanel.querySelector("#relAttrBody");
@@ -3124,7 +3159,7 @@ function openRelModal(rel) {
     nAryChecks.forEach(chk => {
       chk.disabled = anySpec || identifyingOn;
     });
-    if (identEl) identEl.addEventListener("change", refreshSpecializationEnableState);
+//    if (identEl) identEl.addEventListener("change", refreshSpecializationEnableState);
   }
 
   nAryChecks.forEach(chk => chk.addEventListener("change", refreshSpecializationEnableState));
@@ -3189,57 +3224,64 @@ function saveRelModal() {
   rel.optA = optA;
   rel.optB = optB;
 
-  // 2.5 Identifying (weak entity) toggle
+  // 2.5 Identifying (weak entity) toggle (with weak-side selector)
   const identEl = document.getElementById("relIdentifying");
   const wantIdentifying = !!(identEl && identEl.checked);
 
   if (wantIdentifying) {
-    const entA = erd.entities.find(e => e.id === rel.a);
-    const entB = erd.entities.find(e => e.id === rel.b);
-    const aIsWeak = !!(entA && entA.isWeak);
-    const bIsWeak = !!(entB && entB.isWeak);
-
-    // Only allow if exactly one side is weak and relationship is binary
-    const exactlyOneWeak = (aIsWeak ^ bIsWeak);
+    // Only allow identifying for binary, non-n-ary, non-specialization
     const hasNAry = Array.isArray(rel.extras) && rel.extras.length > 0;
     const hasSpec = Array.isArray(rel.specializationExtras) && rel.specializationExtras.length > 0;
 
-    if (!exactlyOneWeak || hasNAry || hasSpec) {
-      // Safety fallback: reject silently and clear
+    if (hasNAry || hasSpec) {
       rel.identifying = false;
       rel.parentSide = undefined;
     } else {
-      // Parent is the NON-weak side
-      const parentSide = aIsWeak ? "b" : "a";
-      const weakSide   = aIsWeak ? "a" : "b";
+      // Read which side user chose as the WEAK side (radio buttons)
+      const weakRadio = document.querySelector('input[name="relWeakSide"]:checked');
+      const weakSide = weakRadio ? weakRadio.value : null; // "a" or "b"
 
-      rel.identifying = true;
-      rel.parentSide = parentSide;
-      // Optional: if you want to forbid M:N for identifying weak semantics:
-      const [l, rr] = String(rel.type || "1:1").toUpperCase().split(":");
-      const manyA = (l === "N" || l === "M");
-      const manyB = (rr === "N" || rr === "M");
-      if (manyA && manyB) {
-        // If you prefer to reject silently:
+      if (weakSide !== "a" && weakSide !== "b") {
+        // Safety fallback: if UI didn't provide a choice, don't enable identifying
         rel.identifying = false;
         rel.parentSide = undefined;
-        // Or instead, you could auto-coerce to 1:N with weak on N side.
-        // return;
       } else {
-        if (parentSide === "a") {
-          // weak side is B; enforce: B requires A
-          rel.optA = false;
-        } else {
-          // parentSide === "b"; weak side is A; enforce: A requires B
-          rel.optB = false;
+        const parentSide = (weakSide === "a") ? "b" : "a";
+
+        rel.identifying = true;
+        rel.parentSide  = parentSide;
+
+        // Enforce IDENTIFYING semantics:
+        // - weak side must NOT be optional (each weak entity must have a parent)
+        // - parent side may be optional (a parent may have 0 weak children)
+        if (weakSide === "a") rel.optA = false;
+        if (weakSide === "b") rel.optB = false;
+
+        // Disallow M:N for identifying
+        const [l0, r0] = String(rel.type || "1:1").toUpperCase().split(":");
+        let manyA2 = (l0 === "N" || l0 === "M");
+        let manyB2 = (r0 === "N" || r0 === "M");
+
+        if (manyA2 && manyB2) {
+          // reject identifying if user tries M:N
+          rel.identifying = false;
+          rel.parentSide = undefined;
+        } else if (manyA2 !== manyB2) {
+          // If it's 1:N, force the N side to be the WEAK side.
+          // (So if user made parent side "many" by accident, we flip.)
+          if (weakSide === "a") {
+            manyA2 = true;   // weak is many
+            manyB2 = false;  // parent is one
+          } else {
+            manyA2 = false;  // parent is one
+            manyB2 = true;   // weak is many
+          }
+          rel.type = `${manyA2 ? "N" : "1"}:${manyB2 ? "N" : "1"}`;
         }
-        // OPTIONAL: You may still want to prevent editing "Many" checkboxes
-        // in the UI for the weak side if you have other weak-entity creation semantics,
-        // but schema-wise it's fine to allow identifying 1:1 too.
+        // If it's 1:1, we leave rel.type as-is (no forced many)
       }
     }
   } else {
-    // If unchecked, clear identifying flags
     rel.identifying = false;
     rel.parentSide = undefined;
   }
