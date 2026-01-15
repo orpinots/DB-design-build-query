@@ -3215,22 +3215,28 @@ function saveRelModal() {
 
       rel.identifying = true;
       rel.parentSide = parentSide;
-
-      // Force canonical identifying weak relationship shape:
-      // parent = "1", weak = "N"
-      const parentIsA = (parentSide === "a");
-
-      // Set rel.type to 1:N with weak on N side
-      // If parent is A => A=1, B=N. If parent is B => A=N, B=1.
-      rel.type = parentIsA ? "1:N" : "N:1";
-
-      // Weak side can NOT be optional (must have owner key)
-      if (weakSide === "a") rel.optA = false;
-      if (weakSide === "b") rel.optB = false;
-
-      // OPTIONAL: identifying implies role labels are usually meaningless here
-      // rel.roleA = "";
-      // rel.roleB = "";
+      // Optional: if you want to forbid M:N for identifying weak semantics:
+      const [l, rr] = String(rel.type || "1:1").toUpperCase().split(":");
+      const manyA = (l === "N" || l === "M");
+      const manyB = (rr === "N" || rr === "M");
+      if (manyA && manyB) {
+        // If you prefer to reject silently:
+        rel.identifying = false;
+        rel.parentSide = undefined;
+        // Or instead, you could auto-coerce to 1:N with weak on N side.
+        // return;
+      } else {
+        if (parentSide === "a") {
+          // weak side is B; enforce: B requires A
+          rel.optA = false;
+        } else {
+          // parentSide === "b"; weak side is A; enforce: A requires B
+          rel.optB = false;
+        }
+        // OPTIONAL: You may still want to prevent editing "Many" checkboxes
+        // in the UI for the weak side if you have other weak-entity creation semantics,
+        // but schema-wise it's fine to allow identifying 1:1 too.
+      }
     }
   } else {
     // If unchecked, clear identifying flags
