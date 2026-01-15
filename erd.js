@@ -3095,6 +3095,65 @@ function openRelModal(rel) {
       refreshSpecializationEnableState(); // keep mutual-exclusion logic correct
     });
   }
+  
+  // --- Identifying UI guardrails (prevent parent side being Many) ---
+  const identElUI = document.getElementById("relIdentifying");
+  const manyAElUI = document.getElementById("relManyA");
+  const manyBElUI = document.getElementById("relManyB");
+
+  function getWeakSideFromUI() {
+    const w = document.querySelector('input[name="relWeakSide"]:checked');
+    return w ? w.value : null; // "a" or "b"
+  }
+
+  function refreshIdentifyingCardinalityGuards() {
+    const identifyingOn = !!(identElUI && identElUI.checked);
+
+    // If your identifying UI is hidden for this relationship, do nothing
+    if (!identElUI) return;
+
+    if (!manyAElUI || !manyBElUI) return;
+
+    if (!identifyingOn) {
+      // restore normal editing
+      manyAElUI.disabled = false;
+      manyBElUI.disabled = false;
+      return;
+    }
+
+    // Identifying ON: parent side must NOT be many
+    const weakSide = getWeakSideFromUI();   // "a" or "b"
+    if (weakSide !== "a" && weakSide !== "b") return;
+
+    const parentSide = (weakSide === "a") ? "b" : "a";
+
+    if (parentSide === "a") {
+      // parent is A -> A cannot be many
+      manyAElUI.checked = false;
+      manyAElUI.disabled = true;
+
+      // weak is B -> allow manyB (so you can choose 1:1 vs 1:N)
+      manyBElUI.disabled = false;
+    } else {
+      // parent is B -> B cannot be many
+      manyBElUI.checked = false;
+      manyBElUI.disabled = true;
+
+      // weak is A -> allow manyA
+      manyAElUI.disabled = false;
+    }
+  }
+
+  // Wire it up
+  if (identElUI) {
+    identElUI.addEventListener("change", refreshIdentifyingCardinalityGuards);
+  }
+  // If you added the A/B weak-side selector radios:
+  const weakRadios = Array.from(document.querySelectorAll('input[name="relWeakSide"]'));
+  weakRadios.forEach(r => r.addEventListener("change", refreshIdentifyingCardinalityGuards));
+
+  // Run once on open
+  refreshIdentifyingCardinalityGuards();
 
   // --- wire up attribute add/delete ---
   const relAttrBodyEl = relSidesPanel.querySelector("#relAttrBody");
@@ -3159,9 +3218,9 @@ function openRelModal(rel) {
     nAryChecks.forEach(chk => {
       chk.disabled = anySpec || identifyingOn;
     });
-//    if (identEl) identEl.addEventListener("change", refreshSpecializationEnableState);
   }
-
+  if (identEl) identEl.addEventListener("change", refreshSpecializationEnableState);
+  
   nAryChecks.forEach(chk => chk.addEventListener("change", refreshSpecializationEnableState));
   specChecks.forEach(chk => chk.addEventListener("change", refreshSpecializationEnableState));
   refreshSpecializationEnableState();
