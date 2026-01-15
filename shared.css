@@ -224,6 +224,19 @@ textarea {
   background: #fdecee;
 }
 
+/* hide submenus by default */
+#ctxMenu .has-submenu .submenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  z-index: 9999;
+}
+
+/* show submenus only when hovering the parent */
+#ctxMenu .has-submenu:hover .submenu {
+  display: block;
+}
 
 
 /* Modals */

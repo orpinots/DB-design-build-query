@@ -2082,6 +2082,82 @@ function resetCtxSubmenus() {
   pendingRelTargetId = null;
 }
 
+// --- Auto-close cascading menus when mouse leaves the whole cluster ---
+let ctxCloseTimer = null;
+
+function anyMenuContainsPoint(x, y) {
+  const els = [
+    ctxMenu,
+    relTargetMenu || document.getElementById("ctxRelTargetMenu"),
+    relTypeMenu   || document.getElementById("ctxRelTypeMenu"),
+    relCtxMenu
+  ].filter(Boolean);
+
+  return els.some(el => {
+    if (el.style.display === "none") return false;
+    const r = el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  });
+}
+
+function scheduleCloseCtxMenus() {
+  if (ctxCloseTimer) clearTimeout(ctxCloseTimer);
+  ctxCloseTimer = setTimeout(() => {
+    // only close if pointer is not over any menu
+    // (use current mouse position via lastMouseMove)
+    if (!lastMouseMove) return;
+    const { clientX, clientY } = lastMouseMove;
+    if (!anyMenuContainsPoint(clientX, clientY)) {
+      ctxMenu.style.display = "none";
+      relCtxMenu.style.display = "none";
+      resetCtxSubmenus();
+    }
+  }, 180); // small grace period so moving between menus doesn't flicker
+}
+
+function cancelCloseCtxMenus() {
+  if (ctxCloseTimer) clearTimeout(ctxCloseTimer);
+  ctxCloseTimer = null;
+}
+
+let lastMouseMove = null;
+
+function installCtxHoverAutoClose() {
+  // Track mouse position (desktop)
+  window.addEventListener("mousemove", (e) => { lastMouseMove = e; }, { passive: true });
+
+  // When leaving any menu panel, schedule a close
+  [ctxMenu, relCtxMenu].forEach(el => {
+    if (!el) return;
+    el.addEventListener("mouseleave", scheduleCloseCtxMenus);
+    el.addEventListener("mouseenter", cancelCloseCtxMenus);
+  });
+
+  // The submenus are inside ctxMenu, but they’re absolutely positioned;
+  // we should treat them as independent panels too.
+  relTargetMenu = relTargetMenu || document.getElementById("ctxRelTargetMenu");
+  relTypeMenu   = relTypeMenu   || document.getElementById("ctxRelTypeMenu");
+
+  [relTargetMenu, relTypeMenu].forEach(el => {
+    if (!el) return;
+    el.addEventListener("mouseleave", scheduleCloseCtxMenus);
+    el.addEventListener("mouseenter", cancelCloseCtxMenus);
+  });
+
+  // Clicking anywhere outside still closes (keep your existing behavior if you have it)
+  window.addEventListener("mousedown", (e) => {
+    const x = e.clientX, y = e.clientY;
+    if (!anyMenuContainsPoint(x, y)) {
+      ctxMenu.style.display = "none";
+      relCtxMenu.style.display = "none";
+      resetCtxSubmenus();
+    }
+  }, true);
+}
+
+// call once
+window.addEventListener("DOMContentLoaded", installCtxHoverAutoClose);
+
 function positionMenuNextToAnchor(menuEl, anchorRect, offsetX = 6) {
   // anchorRect is a DOMRect in viewport coords
   const x = anchorRect.right + offsetX + window.scrollX;
@@ -2094,7 +2170,7 @@ function populateRelTargetSubmenu(sourceEntityId) {
   if (!relTargetMenu) return;
 
   relTargetMenu.innerHTML = "";
-  relTargetMenu.style.display = "block";      // ensure visible when populated (optional)
+//  relTargetMenu.style.display = "block";      // uncomment if add relationship submenu should always show
   if (relTypeMenu) relTypeMenu.style.display = "none";
   pendingRelTargetId = null;
 
@@ -2193,7 +2269,7 @@ function openEntityCtxMenuAtPageXY(pageX, pageY) {
   relTargetMenu = relTargetMenu || document.getElementById("ctxRelTargetMenu");
   relTypeMenu   = relTypeMenu   || document.getElementById("ctxRelTypeMenu");
 
-  populateRelTargetSubmenu(ctxEntityId);
+  //  populateRelTargetSubmenu(ctxEntityId);   // uncomment this if relationship submenu should always show (similar comment below)
   showCtxMenu(pageX, pageY);
 }
 
@@ -2299,6 +2375,25 @@ window.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("DOMContentLoaded", () => {
   relTargetMenu = document.getElementById("ctxRelTargetMenu");
   relTypeMenu   = document.getElementById("ctxRelTypeMenu");
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  const relCascItem = document.querySelector('#ctxMenu [data-act="relCasc"]');
+  const relTrigger  = relCascItem?.querySelector(".submenu-trigger");
+
+  if (relTrigger) {
+    relTrigger.addEventListener("mouseenter", () => {
+      // populate only when user hovers Add Relationship
+      populateRelTargetSubmenu(ctxEntityId);
+    });
+
+    // optional: for click/tap behavior on mobile
+    relTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      populateRelTargetSubmenu(ctxEntityId);
+      // optionally toggle visibility if you want tap-to-open on touch devices
+    });
+  }
 });
 
 
@@ -2763,6 +2858,7 @@ function populateTypeSelect(selectEl, currentType) {
   }
   selectEl.dataset.currentType = selectEl.value;
 }
+
 function attachTypeSelectHandler(selectEl) {
   selectEl.addEventListener("change", () => {
     if (selectEl.value === "__CUSTOM__") {
