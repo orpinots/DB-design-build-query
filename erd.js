@@ -4128,8 +4128,8 @@ function loadErdLayout(idxStr) {
   render();
 
   // Optional nice touch: clear the dropdown selection after load
-  const sel = document.getElementById("savedErdSelect");
-  if (sel) sel.value = "";
+//  const sel = document.getElementById("savedErdSelect");
+//  if (sel) sel.value = "";
 
   // Optional: refresh time machine menu if you want it to reflect the loaded ERD immediately
   if (typeof refreshTimeMachineDropdown === "function") refreshTimeMachineDropdown();
