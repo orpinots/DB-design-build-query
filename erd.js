@@ -2866,11 +2866,23 @@ function openRelModal(rel) {
   const extras = rel.extras || [];
   const relAttrs = rel.attributes || [];
   const isUnary = rel.a === rel.b;
+  // --- identifying eligibility (weak entity) ---
+  const aIsWeak = !!entA.isWeak;
+  const bIsWeak = !!entB.isWeak;
+  const exactlyOneWeak = (aIsWeak ^ bIsWeak); // XOR
+  const weakSide = aIsWeak ? "a" : (bIsWeak ? "b" : null);
 
   // --- specialization state (new) ---
   const specializationExtras = rel.specializationExtras || [];
   const specDisjoint = (rel.specializationDisjoint !== false);  // default: disjoint
   const specTotal    = !!rel.specializationTotal;                // default: partial
+
+  // Identifying only makes sense for binary, non-specialization, non-n-ary
+  const canShowIdentifying =
+    exactlyOneWeak &&
+    (extras.length === 0) &&
+    (specializationExtras.length === 0) &&
+    !isUnary; // optional: you can allow unary later, but keep it simple now	
 
   const supportsRoleLabels = (extras.length === 0) && (specializationExtras.length === 0);
 
@@ -2982,6 +2994,18 @@ function openRelModal(rel) {
         </div>
       </div>
     </div>
+	${canShowIdentifying ? `
+	  <div class="rel-section">
+	    <h4>Weak entity key</h4>
+		<label style="display:block; margin-top:6px;">
+		  <input type="checkbox" id="relIdentifying" ${rel.identifying ? "checked" : ""}>
+		  Make identifying (parent key becomes part of weak entity PK)
+	    </label>
+	    <div style="font-size:12px; color:#555; margin-top:4px;">
+	      When enabled, the weak side is forced to be “Many” and “NOT optional”.
+		</div>
+	  </div>
+	` : ``}
 
     <div class="rel-section">
       <h4>Relationship Attributes</h4>
@@ -3078,10 +3102,12 @@ function openRelModal(rel) {
   const specTotalEl = document.getElementById("relSpecTotal");
 
   function refreshSpecializationEnableState() {
+    const identEl = document.getElementById("relIdentifying");
+    const identifyingOn = !!(identEl && identEl.checked);
     const anyNAry  = nAryChecks.some(chk => chk.checked);
     const anySpec  = specChecks.some(chk => chk.checked);
 
-    const allowSpec = isOneOne && !anyNAry;
+    const allowSpec = isOneOne && !anyNAry && !identifyingOn;
 
     // Specialization only when 1:1 AND not n-ary
     specChecks.forEach(chk => {
@@ -3096,8 +3122,9 @@ function openRelModal(rel) {
 
     // If specialization is chosen, we still prevent n-ary at the same time
     nAryChecks.forEach(chk => {
-      chk.disabled = anySpec;
+      chk.disabled = anySpec || identifyingOn;
     });
+    if (identEl) identEl.addEventListener("change", refreshSpecializationEnableState);
   }
 
   nAryChecks.forEach(chk => chk.addEventListener("change", refreshSpecializationEnableState));
@@ -3162,6 +3189,55 @@ function saveRelModal() {
   rel.optA = optA;
   rel.optB = optB;
 
+  // 2.5 Identifying (weak entity) toggle
+  const identEl = document.getElementById("relIdentifying");
+  const wantIdentifying = !!(identEl && identEl.checked);
+
+  if (wantIdentifying) {
+    const entA = erd.entities.find(e => e.id === rel.a);
+    const entB = erd.entities.find(e => e.id === rel.b);
+    const aIsWeak = !!(entA && entA.isWeak);
+    const bIsWeak = !!(entB && entB.isWeak);
+
+    // Only allow if exactly one side is weak and relationship is binary
+    const exactlyOneWeak = (aIsWeak ^ bIsWeak);
+    const hasNAry = Array.isArray(rel.extras) && rel.extras.length > 0;
+    const hasSpec = Array.isArray(rel.specializationExtras) && rel.specializationExtras.length > 0;
+
+    if (!exactlyOneWeak || hasNAry || hasSpec) {
+      // Safety fallback: reject silently and clear
+      rel.identifying = false;
+      rel.parentSide = undefined;
+    } else {
+      // Parent is the NON-weak side
+      const parentSide = aIsWeak ? "b" : "a";
+      const weakSide   = aIsWeak ? "a" : "b";
+
+      rel.identifying = true;
+      rel.parentSide = parentSide;
+
+      // Force canonical identifying weak relationship shape:
+      // parent = "1", weak = "N"
+      const parentIsA = (parentSide === "a");
+
+      // Set rel.type to 1:N with weak on N side
+      // If parent is A => A=1, B=N. If parent is B => A=N, B=1.
+      rel.type = parentIsA ? "1:N" : "N:1";
+
+      // Weak side can NOT be optional (must have owner key)
+      if (weakSide === "a") rel.optA = false;
+      if (weakSide === "b") rel.optB = false;
+
+      // OPTIONAL: identifying implies role labels are usually meaningless here
+      // rel.roleA = "";
+      // rel.roleB = "";
+    }
+  } else {
+    // If unchecked, clear identifying flags
+    rel.identifying = false;
+    rel.parentSide = undefined;
+  }
+  
   // 3. n-ary participants
   if (relSidesPanel) {
     const extraChecks = relSidesPanel.querySelectorAll(".rel-extra-entity");
