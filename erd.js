@@ -3310,12 +3310,17 @@ function saveRelModal() {
         rel.identifying = true;
         rel.parentSide  = parentSide;
 
-        // Enforce IDENTIFYING semantics:
-        // - weak side must NOT be optional (each weak entity must have a parent)
-        // - parent side may be optional (a parent may have 0 weak children)
-        if (weakSide === "a") rel.optA = false;
-        if (weakSide === "b") rel.optB = false;
-
+		// Enforce IDENTIFYING semantics (using this app's optA/optB meaning):
+		// - weak entity MUST require parent
+		// - parent may or may not require weak (user choice should stick)
+		if (weakSide === "a") {
+		  // A is weak -> A must require B  => optB must be FALSE
+		  rel.optB = false;
+		} else {
+		  // B is weak -> B must require A  => optA must be FALSE
+		  rel.optA = false;
+		}
+		
         // Disallow M:N for identifying
         const [l0, r0] = String(rel.type || "1:1").toUpperCase().split(":");
         let manyA2 = (l0 === "N" || l0 === "M");
