@@ -382,6 +382,34 @@ function zoomAtScreenPoint(newScale, sx, sy) {
 }
 
 
+function fitViewToContent({ padding = 80, maxScale = 1.25 } = {}) {
+  if (!wrap) return;
+
+  const vw = wrap.clientWidth;
+  const vh = wrap.clientHeight;
+  if (vw <= 0 || vh <= 0) return;
+
+  const { minX, minY, maxX, maxY } = getContentWorldBounds();
+  const contentW = Math.max(1, maxX - minX);
+  const contentH = Math.max(1, maxY - minY);
+
+  // scale so content fits in viewport with padding
+  const sx = (vw - 2 * padding) / contentW;
+  const sy = (vh - 2 * padding) / contentH;
+
+  // choose a scale that fits; clamp
+  viewScale = clamp(Math.min(sx, sy, maxScale), MIN_SCALE, MAX_SCALE);
+
+  // center content
+  viewPanX = (vw - contentW * viewScale) / 2 - minX * viewScale;
+  viewPanY = (vh - contentH * viewScale) / 2 - minY * viewScale;
+
+  clampPanToContent();
+  applyViewTransform();
+}
+
+
+
 
 // =========================
 // Two-finger pan + pinch zoom (canvasWrap)
@@ -880,6 +908,8 @@ function render() {
   saveCurrentErdState(erd);
 }
 
+
+
 function toggleAttrView() {
   showAttributeOvals = !showAttributeOvals;
   const btn = document.getElementById("toggleAttrViewBtn");
@@ -988,6 +1018,8 @@ function drawRoleLabelNearMinSymbol(endX, endY, towardX, towardY, roleText, perp
   t.textContent = roleText;
   svg.appendChild(t);
 }
+
+
 
 //  ---------- Relationships + Crow's Feet ---------- */
 function drawRelationship(r) {
@@ -4126,6 +4158,11 @@ function loadErdLayout(idxStr) {
 
   // Redraw canvas
   render();
+  // IMPORTANT: run after render so widths/heights exist
+  requestAnimationFrame(() => {
+    // if entity widths are measured in render, a 2nd frame is even safer:
+    requestAnimationFrame(() => fitViewToContent({ padding: 80, maxScale: 1.25 }));
+  });
 
   // Optional nice touch: clear the dropdown selection after load
 //  const sel = document.getElementById("savedErdSelect");
@@ -4209,6 +4246,7 @@ function switchErdPreset(key) {
   
   // Re-render canvas
   render();
+  requestAnimationFrame(() => requestAnimationFrame(() => fitViewToContent()));
 
   // Optional: reset the text areas so it’s clear the schema is tied to the current ERD
   document.getElementById("sqlOut").value =
