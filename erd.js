@@ -1334,11 +1334,18 @@ function drawRelationship(r) {
 
         defX = mx + radius * Math.cos(angle);
         defY = my + radius * Math.sin(angle);
-      } else {
-        // Original vertical stack for non-synthetic relationships
-        defX = mx;
-        defY = startY + idx * vSpacing;
-      }
+	  } else {
+	    // Vertical stack for non-synthetic relationships — shift left to avoid diamond overlap
+	    const leftShift = 50;   // tweak to taste
+	    defX = mx - leftShift;
+	    defY = startY + idx * vSpacing;
+	  }
+  } else {
+    // Vertical stack for non-synthetic relationships — shift left to avoid diamond overlap
+    const leftShift = 70;   // tweak to taste: 60–90 works well
+    defX = mx - leftShift;
+    defY = startY + idx * vSpacing;
+  }
 
       const ovalX =
         (typeof aAttr.ovalX === "number") ? aAttr.ovalX : defX;
