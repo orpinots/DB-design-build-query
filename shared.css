@@ -164,7 +164,22 @@ textarea {
   min-width: 120px;
   box-shadow: 0 3px 10px rgba(0,0,0,.08);
 }
-.entity.weak-entity { border-style: double; }
+
+
+.entity.weak-entity {
+  border-style: solid;          /* override "double" */
+  position: absolute;           /* already, but ensures ::before anchors */
+}
+
+.entity.weak-entity::before {
+  content: "";
+  position: absolute;
+  inset: 6px;                   /* <<< increase/decrease gap here */
+  border: 2px solid #222;
+  border-radius: 7px;           /* slightly smaller than outer radius */
+  pointer-events: none;
+}
+
 .entity.assoc-entity { border-color: var(--primary); }
 
 .rel-hit, .attr-hit {
