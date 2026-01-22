@@ -139,7 +139,13 @@ window.ERD_PRESETS = {
 	        a: "coach",
 	        b: "team",
 	        optA: true,
-	        optB: true
+	        optB: true,
+	        // NEW: relationship attributes (will become columns on the junction table)
+	        attributes: [
+	          { name: "Role",      type: "TEXT", notNull: false }, // e.g., Head / Assistant
+	          { name: "StartDate", type: "TEXT", notNull: false }, // or DATE if you support it
+			  { name: "EndDate",   type: "TEXT", notNull: false }  // nullable if current
+	        ]
 	      },
 	      {
 	        id: "rTeamSpec",
