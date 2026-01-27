@@ -132,9 +132,7 @@ INSERT INTO takes VALUES ('666-77-8888','MKT250','I130','WIL','12','2026S','Mon/
 `.trim(),
 
     defaultQuery: `
--- Interesting query:
--- Find "room utilization" by term (how many distinct meetings are scheduled in each room),
--- and show the top rooms first.
+-- Show rooms and their usage by term
 SELECT
   t.Term,
   b.BuildingName,
@@ -336,9 +334,7 @@ INSERT INTO Match VALUES ('T21','T20','2026-10-03','16:00','F1');
 `.trim(),
 
     defaultQuery: `
--- Interesting query:
--- List matches with human-readable team names + field,
--- and show each team's head coach (if any) alongside.
+-- List matches and show each team's head coach.
 SELECT
   m.MatchDate,
   m.Time,
