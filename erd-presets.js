@@ -124,9 +124,8 @@ window.ERD_PRESETS = {
 	        attributes: [
 	          { name: "HomeTeamID", pk: true, fk: true },
 	          { name: "AwayTeamID", pk: true, fk: true },
-	          { name: "MatchDate", pk: true },
-	          { name: "Time", pk: false },
-	          { name: "FieldID", pk: false, fk: true }
+			  { name: "MatchDate", pk: true },
+			  { name: "Time", pk: false }
 	        ]
 	      }
 	    ],
